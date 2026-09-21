@@ -1,0 +1,59 @@
+{% extends "public/base.html" %}
+
+{% block title %}Member Stats · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Member Stats</h2>
+    <p class="lead">
+      Career player stats and game participation across all seasons.
+    </p>
+    <p class="note">Click any column heading to sort.</p>
+  </section>
+
+  <section class="card">
+    {% if load_error %}
+      <p class="error-note">Could not load member stats. {{ load_error }}</p>
+    {% elif not players %}
+      <p class="note">No member stats yet.</p>
+    {% else %}
+      <p class="note">{{ players | length }} members</p>
+      <div class="table-wrap">
+        <table class="stats-table sortable-table">
+          <thead>
+            <tr>
+              <th><button type="button" class="sort-btn">Player</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Games</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Wins</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Win Rate</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Seasons</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Season Titles</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Season Runner-ups</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Tournament Titles</button></th>
+              <th class="numeric"><button type="button" class="sort-btn">Tournament Runner-ups</button></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in players %}
+              <tr>
+                <td>{{ row.player }}</td>
+                <td class="numeric">{{ row.total_games }}</td>
+                <td class="numeric">{{ row.total_wins }}</td>
+                <td class="numeric">{{ row.win_rate }}</td>
+                <td class="numeric">{{ row.total_seasons }}</td>
+                <td class="numeric">{{ row.season_titles }}</td>
+                <td class="numeric">{{ row.season_runnerups }}</td>
+                <td class="numeric">{{ row.tournament_titles }}</td>
+                <td class="numeric">{{ row.tournament_runnerups }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='table-sort.js') }}" defer></script>
+{% endblock %}

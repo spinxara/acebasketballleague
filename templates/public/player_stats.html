@@ -1,0 +1,78 @@
+{% extends "public/base.html" %}
+
+{% block title %}Player Stats by Season · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Player Stats by Season</h2>
+    <p class="lead">
+      Per-season games, wins, and comments by team.
+    </p>
+    <p class="note">Choose a season to view that roster. Guest appearances are listed last. Click any column heading to sort.</p>
+  </section>
+
+  <section class="card">
+    {% if load_error %}
+      <p class="error-note">Could not load player stats. {{ load_error }}</p>
+    {% elif not seasons %}
+      <p class="note">No player season stats yet.</p>
+    {% else %}
+      <form class="filter-bar" method="get" action="{{ url_for('player_stats') }}">
+        <div class="filter-field">
+          <label for="season">Season</label>
+          <select id="season" name="season">
+            {% for season in seasons %}
+              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <noscript>
+          <button class="filter-submit" type="submit">Show</button>
+        </noscript>
+      </form>
+
+      {% if not players %}
+        <p class="note">No players found for {{ selected_season }}.</p>
+      {% else %}
+        <p class="note">{{ players | length }} players in {{ selected_season }}</p>
+        <div class="table-wrap">
+          <table class="stats-table sortable-table">
+            <thead>
+              <tr>
+                <th><button type="button" class="sort-btn">Player</button></th>
+                <th><button type="button" class="sort-btn">Team</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Games</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Wins</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Win Rate</button></th>
+                <th><button type="button" class="sort-btn">Comments</button></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in players %}
+                <tr>
+                  <td>{{ row.player }}</td>
+                  <td>
+                    <span class="team-pill {{ row.team_class }}">{{ row.season_team }}</span>
+                  </td>
+                  <td class="numeric">{{ row.season_games }}</td>
+                  <td class="numeric">{{ row.season_wins }}</td>
+                  <td class="numeric">{{ row.win_rate }}</td>
+                  <td>{{ row.comments or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='table-sort.js') }}" defer></script>
+  <script>
+    document.getElementById("season")?.addEventListener("change", function () {
+      this.form.submit();
+    });
+  </script>
+{% endblock %}

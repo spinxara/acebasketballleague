@@ -9,13 +9,11 @@
 <body class="public-body">
   <header class="site-header">
     <div class="brand-row">
-      <div class="logo-mark" aria-hidden="true">
-        <div>
-          <span class="la">LA</span>
-          <span class="ace">ACE</span>
-          <span class="sub">BASKETBALL</span>
-        </div>
-      </div>
+      <img
+        class="logo-mark"
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt="LA ACE Basketball"
+      />
       <div class="brand-copy">
         <h1>ACE Basketball League Guidebook & Stats</h1>
         <p class="meta-line">Stats Last Updated: {{ last_updated }}</p>
@@ -39,5 +37,7 @@
     <span>ACE Basketball League &middot; {{ current_year }}</span>
     <a href="{{ url_for('admin_dashboard') }}">Admin</a>
   </footer>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>

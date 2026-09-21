@@ -1,0 +1,61 @@
+{% extends "public/base.html" %}
+
+{% block title %}Season Results · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Season Results</h2>
+    <p class="lead">
+      Season summaries, including champions, status, MIP awards,
+      match results, and video recordings.
+    </p>
+    <p class="note">Match results and video recordings will also live on this page.</p>
+  </section>
+
+  <section class="card">
+    {% if load_error %}
+      <p class="error-note">Could not load season results. {{ load_error }}</p>
+    {% elif not seasons %}
+      <p class="note">No season records yet.</p>
+    {% else %}
+      <div class="table-wrap">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Status</th>
+              <th>Season Winner</th>
+              <th>Tournament Winner</th>
+              <th>MIP Award</th>
+              <th>Season Page</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in seasons %}
+              <tr>
+                <td>{{ row.season or "—" }}</td>
+                <td>
+                  {% if row.status %}
+                    <span class="status-pill {{ row.status_class }}">{{ row.status }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>{{ row.season_winner or "—" }}</td>
+                <td>{{ row.tournament_winner or "—" }}</td>
+                <td>{{ row.mip_award or "—" }}</td>
+                <td>
+                  {% if row.season_page %}
+                    <a class="table-link" href="{{ row.season_page }}" target="_blank" rel="noopener noreferrer">Open</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

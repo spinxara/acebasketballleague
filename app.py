@@ -1,9 +1,20 @@
+import json
 import os
-from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
 import random
-from datetime import datetime
+import re
+import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
 from copy import deepcopy
+from datetime import datetime
+
+import certifi
+from dotenv import load_dotenv
+from flask import Flask, redirect, render_template, request, url_for
+from flask_socketio import SocketIO, emit
+
+load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this")
@@ -20,11 +31,11 @@ PUBLIC_NAV = [
     {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
     {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
     {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
-    {"id": "draft", "label": "Draft Room", "endpoint": "draft_room"},
 ]
 
 ADMIN_NAV = [
     {"id": "dashboard", "label": "Dashboard", "endpoint": "admin_dashboard"},
+    {"id": "draft", "label": "Draft Room", "endpoint": "admin_draft"},
     {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
     {"id": "games", "label": "Games", "endpoint": "admin_games"},
     {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
@@ -322,6 +333,270 @@ def emit_draft_state():
     socketio.emit("draft_state", shared_state["draft"])
 
 
+SEASON_COLUMNS = "season,status,season_winner,tournament_winner,mip_award,season_page"
+MEMBER_STATS_COLUMNS = (
+    "player,total_games,total_wins,total_win_rates,total_seasons,"
+    "season_titles,season_runnerups,tournament_titles,tournament_runnerups"
+)
+PLAYER_SEASON_COLUMNS = (
+    "season,player,season_team,season_games,season_wins,season_win_rates,comments"
+)
+TEAM_MATCHUP_COLUMNS = (
+    "season,team,comp_team,total_games,wins_by_team,team_win_rate,team_members"
+)
+ALL_SEASONS_VALUE = "all"
+TEAM_COLOR_CLASSES = {
+    "bk": "team-bk",
+    "ubrg": "team-bk",
+    "ckd": "team-bk",
+    "mmt": "team-bk",
+    "karu": "team-bk",
+    "kcn": "team-kcn",
+    "zoo": "team-kcn",
+    "nps": "team-nps",
+    "nwo": "team-nps",
+    "guest": "team-guest",
+}
+SEASON_LABEL_RE = re.compile(r"^([A-Za-z-]+)\s+(\d{4})$")
+QUARTER_WEIGHT = {
+    "Oct-Dec": 4,
+    "Jul-Sep": 3,
+    "Apr-Jun": 2,
+    "Jan-Mar": 1,
+}
+
+
+def supabase_request(path, method="GET", body=None):
+    supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    api_key = os.environ.get("SUPABASE_API_KEY", "")
+    if not supabase_url or not api_key:
+        raise RuntimeError("Supabase is not configured.")
+
+    headers = {
+        "apikey": api_key,
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+    }
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+
+    request = urllib.request.Request(
+        f"{supabase_url}/rest/v1/{path}",
+        data=data,
+        headers=headers,
+        method=method,
+    )
+
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+
+    try:
+        with urllib.request.urlopen(request, timeout=15, context=ssl_context) as response:
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        exc.read()
+        raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError("Could not reach Supabase.") from exc
+
+
+def fetch_supabase_rows(table, columns, order=None):
+    params = {"select": columns}
+    if order:
+        params["order"] = order
+
+    payload = supabase_request(f"{table}?{urllib.parse.urlencode(params)}")
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Unexpected Supabase response.") from exc
+
+    if not isinstance(data, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    return data
+
+
+def call_supabase_rpc(function_name):
+    supabase_request(f"rpc/{function_name}", method="POST", body={})
+
+
+def parse_season_label(label):
+    if not label or not isinstance(label, str):
+        return "", None
+    match = SEASON_LABEL_RE.match(label.strip())
+    if not match:
+        return "", None
+    return match.group(1), int(match.group(2))
+
+
+def season_sort_key(row):
+    quarter, year = parse_season_label(row.get("season") or "")
+    year_key = -year if year is not None else 1
+    quarter_key = -QUARTER_WEIGHT.get(quarter, -1)
+    return (year_key, quarter_key)
+
+
+def season_status_class(status):
+    value = (status or "").strip().lower()
+    if "complete" in value or value in {"done", "finished"}:
+        return "status-complete"
+    if any(token in value for token in ("progress", "active", "current", "ongoing")):
+        return "status-active"
+    return "status-neutral"
+
+
+def season_page_url(value):
+    if not value or not isinstance(value, str):
+        return ""
+    url = value.strip()
+    if url.startswith(("http://", "https://")):
+        return url
+    return ""
+
+
+def load_season_records():
+    rows = fetch_supabase_rows("seasons", SEASON_COLUMNS)
+    rows.sort(key=season_sort_key)
+    return [
+        {
+            "season": row.get("season") or "",
+            "status": row.get("status") or "",
+            "season_winner": row.get("season_winner") or "",
+            "tournament_winner": row.get("tournament_winner") or "",
+            "mip_award": row.get("mip_award") or "",
+            "season_page": season_page_url(row.get("season_page")),
+            "status_class": season_status_class(row.get("status")),
+        }
+        for row in rows
+    ]
+
+
+def stat_count(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def format_win_rate(value):
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def format_fraction_win_rate(value):
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if 0 <= rate <= 1:
+        rate *= 100
+    return f"{rate:.1f}%"
+
+
+def load_member_stats():
+    # The totals table is derived, so ask Supabase to rebuild it before reading.
+    # A stale read is better than a failed page, so refresh errors are ignored.
+    try:
+        call_supabase_rpc("refresh_player_totals")
+    except RuntimeError:
+        pass
+
+    rows = fetch_supabase_rows(
+        "player_stats_total",
+        MEMBER_STATS_COLUMNS,
+        order="player.asc",
+    )
+    return [
+        {
+            "player": row.get("player") or "—",
+            "total_games": stat_count(row.get("total_games")),
+            "total_wins": stat_count(row.get("total_wins")),
+            "win_rate": format_win_rate(row.get("total_win_rates")),
+            "total_seasons": stat_count(row.get("total_seasons")),
+            "season_titles": stat_count(row.get("season_titles")),
+            "season_runnerups": stat_count(row.get("season_runnerups")),
+            "tournament_titles": stat_count(row.get("tournament_titles")),
+            "tournament_runnerups": stat_count(row.get("tournament_runnerups")),
+        }
+        for row in rows
+    ]
+
+
+def team_badge_class(team):
+    value = (team or "").strip().lower()
+    return TEAM_COLOR_CLASSES.get(value, "team-other")
+
+
+def player_season_sort_key(row):
+    team = row.get("season_team") or ""
+    guest_key = 1 if team == "Guest" else 0
+    return (guest_key, team.lower(), (row.get("player") or "").lower())
+
+
+def load_player_season_stats():
+    rows = fetch_supabase_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
+    players = []
+    seasons = set()
+
+    for row in rows:
+        season = (row.get("season") or "").strip()
+        if season:
+            seasons.add(season)
+        team = (row.get("season_team") or "").strip()
+        players.append({
+            "season": season,
+            "player": row.get("player") or "—",
+            "season_team": team or "—",
+            "team_class": team_badge_class(team),
+            "season_games": stat_count(row.get("season_games")),
+            "season_wins": stat_count(row.get("season_wins")),
+            "win_rate": format_win_rate(row.get("season_win_rates")),
+            "comments": (row.get("comments") or "").strip(),
+        })
+
+    season_list = sorted(seasons, key=lambda label: season_sort_key({"season": label}))
+    players.sort(key=lambda row: (*season_sort_key(row), *player_season_sort_key(row)))
+    return season_list, players
+
+
+def matchup_sort_key(row):
+    team = row.get("team") or ""
+    guest_key = 1 if team == "Guest" else 0
+    return (guest_key, team.lower(), (row.get("comp_team") or "").lower())
+
+
+def load_team_matchups():
+    rows = fetch_supabase_rows("team_matchup_strength", TEAM_MATCHUP_COLUMNS)
+    matchups = []
+    seasons = set()
+
+    for row in rows:
+        season = (row.get("season") or "").strip()
+        if season:
+            seasons.add(season)
+        team = (row.get("team") or "").strip()
+        opponent = (row.get("comp_team") or "").strip()
+        matchups.append({
+            "season": season,
+            "team": team or "—",
+            "team_class": team_badge_class(team),
+            "comp_team": opponent or "—",
+            "comp_team_class": team_badge_class(opponent),
+            "total_games": stat_count(row.get("total_games")),
+            "wins_by_team": stat_count(row.get("wins_by_team")),
+            "win_rate": format_fraction_win_rate(row.get("team_win_rate")),
+            "team_members": (row.get("team_members") or "").strip(),
+        })
+
+    season_list = sorted(seasons, key=lambda label: season_sort_key({"season": label}))
+    matchups.sort(key=lambda row: (*season_sort_key(row), *matchup_sort_key(row)))
+    return season_list, matchups
+
+
 @app.route("/")
 def home():
     return render_template("public/home.html", active="home")
@@ -329,87 +604,111 @@ def home():
 
 @app.route("/season-results")
 def season_results():
+    load_error = None
+    seasons = []
+    try:
+        seasons = load_season_records()
+    except RuntimeError as exc:
+        load_error = str(exc)
+
     return render_template(
-        "public/in_progress.html",
+        "public/season_results.html",
         active="season-results",
-        page_title="Season Results",
-        page_summary=(
-            "Season summaries, including champions, status, MIP awards, "
-            "match results, and video recordings."
-        ),
-        upcoming_columns=[
-            "Season",
-            "Status",
-            "Season Winner",
-            "Tournament Winner",
-            "MIP Award",
-        ],
-        extra_note="Match results and video recordings will also live on this page.",
+        seasons=seasons,
+        load_error=load_error,
     )
 
 
 @app.route("/member-stats")
 def member_stats():
+    load_error = None
+    players = []
+    try:
+        players = load_member_stats()
+    except RuntimeError as exc:
+        load_error = str(exc)
+
     return render_template(
-        "public/in_progress.html",
+        "public/member_stats.html",
         active="member-stats",
-        page_title="Member Stats",
-        page_summary="Career player stats and game participation across all seasons.",
-        upcoming_columns=[
-            "Player",
-            "Total Games",
-            "Total Wins",
-            "Win Rate",
-            "Seasons",
-            "Season Titles",
-            "Season Runner-ups",
-            "Tournament Titles",
-            "Tournament Runner-ups",
-        ],
+        players=players,
+        load_error=load_error,
     )
 
 
 @app.route("/player-stats")
 def player_stats():
+    load_error = None
+    seasons = []
+    players = []
+    selected_season = (request.args.get("season") or "").strip()
+
+    try:
+        seasons, all_players = load_player_season_stats()
+        if seasons:
+            if selected_season not in seasons:
+                selected_season = seasons[0]
+            players = [row for row in all_players if row["season"] == selected_season]
+        else:
+            selected_season = ""
+    except RuntimeError as exc:
+        load_error = str(exc)
+        selected_season = ""
+
     return render_template(
-        "public/in_progress.html",
+        "public/player_stats.html",
         active="player-stats",
-        page_title="Player Stats by Season",
-        page_summary="Per-season player stats, grouped by team, with guest players listed last.",
-        upcoming_columns=[
-            "Season",
-            "Player",
-            "Season Team",
-            "Games",
-            "Wins",
-            "Win Rate",
-            "Comments",
-        ],
+        seasons=seasons,
+        selected_season=selected_season,
+        players=players,
+        load_error=load_error,
     )
 
 
 @app.route("/team-matchups")
 def team_matchups():
+    load_error = None
+    seasons = []
+    matchups = []
+    selected_season = (request.args.get("season") or "").strip()
+    show_all = False
+
+    try:
+        seasons, all_matchups = load_team_matchups()
+        if seasons:
+            show_all = selected_season == ALL_SEASONS_VALUE
+            if show_all:
+                selected_season = ALL_SEASONS_VALUE
+                matchups = all_matchups
+            else:
+                if selected_season not in seasons:
+                    selected_season = seasons[0]
+                matchups = [row for row in all_matchups if row["season"] == selected_season]
+        else:
+            selected_season = ""
+    except RuntimeError as exc:
+        load_error = str(exc)
+        selected_season = ""
+
     return render_template(
-        "public/in_progress.html",
+        "public/team_matchups.html",
         active="team-matchups",
-        page_title="Team Matchups",
-        page_summary="Head-to-head strength between teams for each season, including roster context.",
-        upcoming_columns=[
-            "Season",
-            "Team",
-            "Opponent",
-            "Games",
-            "Wins",
-            "Win Rate",
-            "Team Members",
-        ],
+        seasons=seasons,
+        selected_season=selected_season,
+        show_all=show_all,
+        matchups=matchups,
+        load_error=load_error,
     )
 
 
 @app.route("/draft")
 def draft_room():
-    return render_template("index.html")
+    return redirect(url_for("admin_draft"))
+
+
+@app.route("/admin/draft")
+def admin_draft():
+    return render_template("admin/draft.html", active="draft")
 
 
 @app.route("/admin")
@@ -713,7 +1012,7 @@ def handle_reset_draft():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
+    port = int(os.environ.get("PORT", 5055))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     socketio.run(
         app,

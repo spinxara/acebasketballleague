@@ -5,11 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Admin · ACE League Stats{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  {% block extra_head %}{% endblock %}
 </head>
 <body class="admin-body">
   <header class="admin-header">
     <div class="admin-brand-row">
-      <div class="admin-logo">ACE</div>
+      <img
+        class="admin-logo"
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt="LA ACE Basketball"
+      />
       <div class="admin-brand-copy">
         <h1>ACE League Admin</h1>
         <p>Captain and admin tools for roster, games, and tournament entry.</p>
@@ -33,5 +38,6 @@
     <span>Admin area · captains only</span>
     <a href="{{ url_for('home') }}">Back to public site</a>
   </footer>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

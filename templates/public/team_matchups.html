@@ -1,0 +1,93 @@
+{% extends "public/base.html" %}
+
+{% block title %}Team Matchups · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Team Matchups</h2>
+    <p class="lead">
+      Head-to-head strength between teams each season.
+    </p>
+    <p class="note">Choose a season, or show all seasons. Click any column heading to sort.</p>
+  </section>
+
+  <section class="card">
+    {% if load_error %}
+      <p class="error-note">Could not load team matchups. {{ load_error }}</p>
+    {% elif not seasons %}
+      <p class="note">No team matchups yet.</p>
+    {% else %}
+      <form class="filter-bar" method="get" action="{{ url_for('team_matchups') }}">
+        <div class="filter-field">
+          <label for="season">Season</label>
+          <select id="season" name="season">
+            <option value="all"{% if selected_season == "all" %} selected{% endif %}>All seasons</option>
+            {% for season in seasons %}
+              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <noscript>
+          <button class="filter-submit" type="submit">Show</button>
+        </noscript>
+      </form>
+
+      {% if not matchups %}
+        <p class="note">No matchups found{% if selected_season and selected_season != "all" %} for {{ selected_season }}{% endif %}.</p>
+      {% else %}
+        <p class="note">
+          {% if show_all %}
+            {{ matchups | length }} matchups across all seasons
+          {% else %}
+            {{ matchups | length }} matchups in {{ selected_season }}
+          {% endif %}
+        </p>
+        <div class="table-wrap">
+          <table class="stats-table sortable-table">
+            <thead>
+              <tr>
+                {% if show_all %}
+                  <th><button type="button" class="sort-btn">Season</button></th>
+                {% endif %}
+                <th><button type="button" class="sort-btn">Team</button></th>
+                <th><button type="button" class="sort-btn">Opponent</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Games</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Wins</button></th>
+                <th class="numeric"><button type="button" class="sort-btn">Win Rate</button></th>
+                <th><button type="button" class="sort-btn">Team Members</button></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in matchups %}
+                <tr>
+                  {% if show_all %}
+                    <td>{{ row.season or "—" }}</td>
+                  {% endif %}
+                  <td>
+                    <span class="team-pill {{ row.team_class }}">{{ row.team }}</span>
+                  </td>
+                  <td>
+                    <span class="team-pill {{ row.comp_team_class }}">{{ row.comp_team }}</span>
+                  </td>
+                  <td class="numeric">{{ row.total_games }}</td>
+                  <td class="numeric">{{ row.wins_by_team }}</td>
+                  <td class="numeric">{{ row.win_rate }}</td>
+                  <td class="members-cell">{{ row.team_members or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='table-sort.js') }}" defer></script>
+  <script>
+    document.getElementById("season")?.addEventListener("change", function () {
+      this.form.submit();
+    });
+  </script>
+{% endblock %}
