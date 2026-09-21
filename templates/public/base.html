@@ -35,7 +35,10 @@
 
   <footer class="site-footer">
     <span>ACE Basketball League &middot; {{ current_year }}</span>
-    <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+    <div class="footer-links">
+      <a href="{{ url_for('league_rules') }}">Game Rules</a>
+      <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+    </div>
   </footer>
 
   {% block scripts %}{% endblock %}

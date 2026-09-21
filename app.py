@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import random
@@ -7,18 +8,33 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import wraps
+from threading import Lock
+from urllib.parse import urlparse
 
 import certifi
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, emit
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = (
+    os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW = timedelta(minutes=10)
+_login_attempts = {}
+_login_lock = Lock()
 
 RULES_URL = (
     "https://docs.google.com/document/d/"
@@ -39,8 +55,65 @@ ADMIN_NAV = [
     {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
     {"id": "games", "label": "Games", "endpoint": "admin_games"},
     {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
-    {"id": "login", "label": "Login", "endpoint": "admin_login"},
 ]
+
+
+def is_admin_session():
+    return bool(session.get("is_admin"))
+
+
+def client_ip():
+    return request.headers.get("CF-Connecting-IP") or request.remote_addr or "unknown"
+
+
+def login_is_blocked(ip):
+    cutoff = datetime.now() - LOGIN_WINDOW
+    with _login_lock:
+        recent = [stamp for stamp in _login_attempts.get(ip, []) if stamp > cutoff]
+        if recent:
+            _login_attempts[ip] = recent
+        else:
+            _login_attempts.pop(ip, None)
+        return len(recent) >= LOGIN_MAX_ATTEMPTS
+
+
+def record_failed_login(ip):
+    with _login_lock:
+        _login_attempts.setdefault(ip, []).append(datetime.now())
+
+
+def clear_failed_logins(ip):
+    with _login_lock:
+        _login_attempts.pop(ip, None)
+
+
+def password_matches(submitted):
+    if not ADMIN_PASSWORD:
+        return False
+    secret = str(app.config["SECRET_KEY"]).encode("utf-8")
+    guessed = hmac.new(secret, (submitted or "").encode("utf-8"), "sha256").digest()
+    expected = hmac.new(secret, ADMIN_PASSWORD.encode("utf-8"), "sha256").digest()
+    return hmac.compare_digest(guessed, expected)
+
+
+def safe_admin_next(value):
+    if not isinstance(value, str):
+        return url_for("admin_dashboard")
+    path = urlparse(value).path
+    if path.startswith("/admin") and not path.startswith("/admin/login"):
+        return path
+    return url_for("admin_dashboard")
+
+
+def admin_socket_required(handler):
+    @wraps(handler)
+    def wrapped(*args, **kwargs):
+        if not is_admin_session():
+            emit("system_message", {"message": "Please log in to use admin tools."})
+            return
+        return handler(*args, **kwargs)
+
+    return wrapped
 
 
 @app.context_processor
@@ -51,7 +124,19 @@ def inject_globals():
         "rules_url": RULES_URL,
         "last_updated": "September 14, 2026",
         "current_year": datetime.now().year,
+        "is_admin": is_admin_session(),
     }
+
+
+@app.before_request
+def require_admin_for_admin_pages():
+    if not request.path.startswith("/admin"):
+        return None
+    if request.endpoint in {"admin_login", "admin_logout"}:
+        return None
+    if is_admin_session():
+        return None
+    return redirect(url_for("admin_login", next=request.path))
 
 
 TEAM_NAMES = ["NPS", "KCN", "BK"]
@@ -602,6 +687,11 @@ def home():
     return render_template("public/home.html", active="home")
 
 
+@app.route("/rules")
+def league_rules():
+    return render_template("public/rules.html", active="rules")
+
+
 @app.route("/season-results")
 def season_results():
     load_error = None
@@ -761,23 +851,54 @@ def admin_tournament():
     )
 
 
-@app.route("/admin/login")
+@app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
+    next_url = request.values.get("next", "")
+    if is_admin_session():
+        return redirect(safe_admin_next(next_url))
+
+    if request.method == "POST":
+        ip = client_ip()
+        if login_is_blocked(ip):
+            flash("Too many failed attempts. Try again in a few minutes.")
+            return render_template(
+                "admin/login.html",
+                active="login",
+                next_url=next_url,
+            ), 429
+
+        if password_matches(request.form.get("password")):
+            clear_failed_logins(ip)
+            session.clear()
+            session["is_admin"] = True
+            session.permanent = True
+            return redirect(safe_admin_next(next_url))
+
+        record_failed_login(ip)
+        flash("Incorrect password.")
+
     return render_template(
-        "admin/in_progress.html",
+        "admin/login.html",
         active="login",
-        page_title="Login",
-        page_summary="Captains and admins will sign in here before managing league data.",
-        future_job="Shared password first, then individual captain accounts if needed.",
+        next_url=next_url,
     )
+
+
+@app.route("/admin/logout", methods=["POST"])
+def admin_logout():
+    session.clear()
+    return redirect(url_for("admin_login"))
 
 
 @socketio.on("connect")
 def handle_connect():
+    if not is_admin_session():
+        return False
     emit("state_init", shared_state)
 
 
 @socketio.on("run_seed")
+@admin_socket_required
 def handle_run_seed(data=None):
     count = 1
 
@@ -830,6 +951,7 @@ def handle_run_seed(data=None):
 
 
 @socketio.on("calculate_probabilities")
+@admin_socket_required
 def handle_calculate_probabilities(data=None):
     try:
         season_results = parse_season_results(data)
@@ -851,6 +973,7 @@ def handle_calculate_probabilities(data=None):
 
 
 @socketio.on("set_manual_probabilities")
+@admin_socket_required
 def handle_set_manual_probabilities(data=None):
     try:
         new_percentages = parse_manual_percentages(data)
@@ -871,6 +994,7 @@ def handle_set_manual_probabilities(data=None):
 
 
 @socketio.on("clear_history")
+@admin_socket_required
 def handle_clear_history():
     shared_state["latest_result"] = None
     shared_state["history"] = []
@@ -879,6 +1003,7 @@ def handle_clear_history():
 
 
 @socketio.on("start_draft")
+@admin_socket_required
 def handle_start_draft(data=None):
     if not data or "captains" not in data:
         emit("draft_message", {"message": "❌ Please select 3 captains."})
@@ -925,6 +1050,7 @@ def handle_start_draft(data=None):
 
 
 @socketio.on("make_draft_pick")
+@admin_socket_required
 def handle_make_draft_pick(data=None):
     draft = shared_state["draft"]
 
@@ -973,6 +1099,7 @@ def handle_make_draft_pick(data=None):
 
 
 @socketio.on("undo_draft_pick")
+@admin_socket_required
 def handle_undo_draft_pick():
     draft = shared_state["draft"]
 
@@ -1006,6 +1133,7 @@ def handle_undo_draft_pick():
 
 
 @socketio.on("reset_draft")
+@admin_socket_required
 def handle_reset_draft():
     reset_draft_state("Draft reset. Select 3 captains and start again.")
     emit_draft_state()

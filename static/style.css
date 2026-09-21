@@ -409,6 +409,11 @@ h3 {
   flex-wrap: wrap;
 }
 
+.footer-links {
+  display: flex;
+  gap: 16px;
+}
+
 .site-footer a {
   color: #7a5b00;
 }
@@ -481,6 +486,73 @@ h3 {
 
 .admin-footer a {
   color: var(--admin-accent);
+}
+
+.admin-nav .logout-form {
+  margin-left: auto;
+}
+
+.admin-nav .logout-link {
+  background: transparent;
+  border: 1px solid var(--admin-line);
+  color: var(--admin-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-nav .logout-link:hover {
+  color: var(--admin-text);
+  border-color: var(--admin-muted);
+}
+
+.login-card {
+  max-width: 420px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.login-form label {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.login-form input[type="password"] {
+  padding: 10px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #0f172a;
+  color: var(--admin-text);
+  font-size: 16px;
+}
+
+.login-form input[type="password"]:focus {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 1px;
+}
+
+.login-submit {
+  margin-top: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--admin-accent);
+  color: #082f49;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.form-errors {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  list-style: none;
+  border-radius: 8px;
+  background: #7f1d1d;
+  color: #fecaca;
 }
 
 .draft-room .top-bar {
@@ -780,6 +852,75 @@ h3 {
   gap: 20px;
 }
 
+.rules-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.rules-toc {
+  position: sticky;
+  top: 16px;
+}
+
+.rules-toc h3 {
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+.rules-toc ol {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.8;
+}
+
+.rules-toc a {
+  color: #7a5b00;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.rules-toc a:hover {
+  text-decoration: underline;
+}
+
+.rules-body h2 {
+  scroll-margin-top: 16px;
+}
+
+.rules-body h3 {
+  margin: 20px 0 8px;
+  font-size: 17px;
+}
+
+.rules-body ul {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.rules-body li {
+  margin-bottom: 6px;
+}
+
+.rules-body ul ul {
+  margin-top: 6px;
+}
+
+.rules-label {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rules-body .stats-table {
+  margin: 0 0 16px;
+}
+
 @media (max-width: 900px) {
   .draft-room .top-bar {
     align-items: stretch;
@@ -795,10 +936,15 @@ h3 {
 
 @media (max-width: 800px) {
   .home-grid,
+  .rules-layout,
   .brand-row,
   .admin-brand-row {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .rules-toc {
+    position: static;
   }
 
   .logo-mark {

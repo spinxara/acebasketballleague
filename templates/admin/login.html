@@ -1,0 +1,34 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Login · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card login-card">
+    <h2>Captain login</h2>
+    <p class="lead">Enter the shared admin password to manage the draft, roster, and games.</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class="form-errors">
+          {% for message in messages %}
+            <li>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form class="login-form" method="post" action="{{ url_for('admin_login') }}">
+      <input type="hidden" name="next" value="{{ next_url }}" />
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+        autofocus
+      />
+      <button class="login-submit" type="submit">Sign in</button>
+    </form>
+  </section>
+{% endblock %}

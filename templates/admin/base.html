@@ -20,6 +20,7 @@
         <p>Captain and admin tools for roster, games, and tournament entry.</p>
       </div>
     </div>
+    {% if is_admin %}
     <nav class="admin-nav" aria-label="Admin">
       {% for item in admin_nav %}
         <a
@@ -27,7 +28,11 @@
           href="{{ url_for(item.endpoint) }}"
         >{{ item.label }}</a>
       {% endfor %}
+      <form class="logout-form" method="post" action="{{ url_for('admin_logout') }}">
+        <button class="nav-link logout-link" type="submit">Logout</button>
+      </form>
     </nav>
+    {% endif %}
   </header>
 
   <main class="container">

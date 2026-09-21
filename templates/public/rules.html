@@ -1,0 +1,330 @@
+{% extends "public/base.html" %}
+
+{% block title %}Game Rules · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <div class="kicker">Official version 3.1</div>
+    <h2>League Game Rules</h2>
+    <p class="lead">
+      Season and tournament rules for ACE Basketball League, including match setup,
+      fouls, challenges, possession, and overtime.
+    </p>
+    <p class="note">Last modified April 2, 2025</p>
+    <p>
+      <a class="rules-link" href="{{ url_for('static', filename='ACE_League_Game_Rules_Ver_3.1.pdf') }}" target="_blank" rel="noopener noreferrer">
+        Download the PDF
+      </a>
+    </p>
+  </section>
+
+  <div class="rules-layout">
+    <nav class="card rules-toc" aria-label="Rules sections">
+      <h3>On this page</h3>
+      <ol>
+        <li><a href="#season-games">Season Games</a></li>
+        <li><a href="#foul-rules">Foul Rules</a></li>
+        <li><a href="#possession-rules">Possession Rules</a></li>
+        <li><a href="#shot-clock">Shot Clock</a></li>
+        <li><a href="#substitutions">Substitutions</a></li>
+        <li><a href="#half-time">Half-Time Break</a></li>
+        <li><a href="#overtime">Overtime</a></li>
+        <li><a href="#tournament-games">Tournament Games</a></li>
+      </ol>
+    </nav>
+
+    <div class="rules-body">
+      <section class="card" id="season-games">
+        <h2>Season Games</h2>
+
+        <h3>Match Setup</h3>
+        <ul>
+          <li>Each game consists of two (2) halves, each lasting 8 minutes of running time.</li>
+        </ul>
+
+        <h3>Starting Possession</h3>
+        <ul>
+          <li>The starting possession of the first half of the first game is determined by a shoot-for-ball.</li>
+          <li>The starting possession of the second half of the first game is awarded to the team that did not receive the opening possession.</li>
+          <li>For the remaining five games, starting possession alternates and is awarded to the team that did not receive the opening possession in the previous game.</li>
+          <li>The starting possession of each overtime period is determined by a shoot-for-ball.</li>
+        </ul>
+
+        <h3>Timeouts</h3>
+        <ul>
+          <li>Each team is granted one (1) timeout per game.</li>
+        </ul>
+
+        <h3>Scoring</h3>
+        <ul>
+          <li>Field goals are scored as two (2) points and three (3) points.</li>
+        </ul>
+
+        <h3>Violations</h3>
+        <ul>
+          <li>Standard basketball violations (traveling, double dribble, backcourt violations, out-of-bounds) are enforced throughout the game.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="foul-rules">
+        <h2>Foul Rules</h2>
+
+        <h3>Calling Fouls</h3>
+        <ul>
+          <li>Players are expected to call their own fouls.</li>
+        </ul>
+
+        <h3>Team Fouls (Shooting &amp; Reaching Only)</h3>
+        <p class="rules-label">Definition</p>
+        <ul>
+          <li>
+            Only the following defensive fouls count toward the team foul total:
+            <ul>
+              <li>Shooting fouls</li>
+              <li>Reaching fouls (illegal hand or arm contact that impedes an offensive player)</li>
+            </ul>
+          </li>
+          <li>
+            The following do not count toward team fouls:
+            <ul>
+              <li>Off-ball fouls</li>
+              <li>Loose-ball fouls</li>
+              <li>Offensive fouls</li>
+            </ul>
+          </li>
+          <li>Offensive fouls result in a turnover with a check-up at the top of the key.</li>
+        </ul>
+
+        <h3>Team Foul Penalty — Season Games (8-minute halves)</h3>
+        <ul>
+          <li>Each team is allowed up to five (5) team fouls per half.</li>
+          <li>Once a team commits its 5th team foul, it enters the penalty.</li>
+          <li>
+            While in the penalty:
+            <ul>
+              <li>The offense is awarded two (2) free throws</li>
+              <li>After the free throws, possession is awarded to the defensive team</li>
+            </ul>
+          </li>
+          <li>This applies to every shooting or reaching foul committed while in the penalty.</li>
+        </ul>
+
+        <h3>And-One Situations</h3>
+        <ul>
+          <li>
+            If a player makes a basket while being fouled:
+            <ul>
+              <li>The basket counts</li>
+              <li>The foul is added to the team foul count</li>
+            </ul>
+          </li>
+          <li>Before penalty: no free throw is awarded</li>
+          <li>
+            In penalty:
+            <ul>
+              <li>The player is awarded one (1) free throw after the basket</li>
+              <li>After the free throw, possession is awarded to the defensive team</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>Challenges</h3>
+        <ul>
+          <li>Each team is granted one (1) challenge per half.</li>
+          <li>
+            Challenges may only be used on:
+            <ul>
+              <li>Shooting foul calls</li>
+              <li>Reaching foul calls</li>
+            </ul>
+          </li>
+          <li>Challenges must be initiated immediately after the call and before play resumes.</li>
+        </ul>
+
+        <h3>Challenge Review Process (Revised)</h3>
+        <ul>
+          <li>
+            Two referees review the play and make the ruling:
+            <ul>
+              <li>If upheld: the foul stands and the challenge is consumed</li>
+              <li>
+                If overturned:
+                <ul>
+                  <li>The foul is removed from the team foul count</li>
+                  <li>Possession is awarded to the defensive team</li>
+                  <li>The challenge is retained</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>Challenge Usage</h3>
+        <ul>
+          <li>Each team may use only one (1) challenge per half.</li>
+          <li>
+            If a challenge is successful:
+            <ul>
+              <li>The challenge is retained and does not count as used</li>
+            </ul>
+          </li>
+          <li>
+            If a challenge is unsuccessful:
+            <ul>
+              <li>The challenge is consumed</li>
+            </ul>
+          </li>
+          <li>Unused challenges do not carry over to the next half.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="possession-rules">
+        <h2>Possession Rules</h2>
+        <ul>
+          <li>On any foul or out-of-bounds call, the ball is checked at the top of the key.</li>
+          <li>
+            If the ball hits the rim or a foul is committed:
+            <ul>
+              <li>The shot clock resets to 14 seconds only if the remaining time is below 14</li>
+              <li>If the remaining time is 14 seconds or more, play continues with the existing time</li>
+            </ul>
+          </li>
+          <li>
+            If the ball goes out of bounds and possession remains with the same team:
+            <ul>
+              <li>The ball is checked up top with the remaining shot clock time</li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card" id="shot-clock">
+        <h2>Shot Clock</h2>
+        <ul>
+          <li>A 30-second shot clock is in effect for all possessions.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="substitutions">
+        <h2>Substitutions</h2>
+        <ul>
+          <li>Substitutions may be made on any dead ball.</li>
+          <li>Exceptions are allowed for injury or safety concerns, even if play has not stopped.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="half-time">
+        <h2>Half-Time Break</h2>
+        <ul>
+          <li>A 2-minute half-time break is observed between halves.</li>
+          <li>Teams must remain within the playing area.</li>
+          <li>Substitutions may be made freely.</li>
+          <li>Teams may use the break for strategy, hydration, and brief warm-ups.</li>
+          <li>Play resumes promptly with the designated starting possession.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="overtime">
+        <h2>Overtime</h2>
+        <ul>
+          <li>
+            If the game is tied at the end of regulation:
+            <ul>
+              <li>A 2-minute overtime period is played</li>
+              <li>If still tied, consecutive 1-minute overtime periods are played until a winner is determined</li>
+            </ul>
+          </li>
+          <li>Team fouls reset at the start of each overtime.</li>
+          <li>Challenge usage resets at the start of each overtime period. Each team is granted one (1) challenge per overtime.</li>
+          <li>Only shooting fouls and reaching fouls count toward team fouls.</li>
+        </ul>
+
+        <p class="rules-label">Penalty thresholds</p>
+        <div class="table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Overtime length</th>
+                <th>Penalty begins at</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>2-minute OT</td>
+                <td>three (3) team fouls</td>
+              </tr>
+              <tr>
+                <td>1-minute OT</td>
+                <td>two (2) team fouls</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ul>
+          <li>
+            Once in the penalty:
+            <ul>
+              <li>The offense receives two (2) free throws</li>
+              <li>After the free throws, possession is awarded to the defensive team</li>
+            </ul>
+          </li>
+          <li>Starting possession goes to the team that had the original starting possession at the beginning of regulation.</li>
+        </ul>
+      </section>
+
+      <section class="card" id="tournament-games">
+        <h2>Tournament Games</h2>
+        <p class="note">All rules remain the same as Season Games unless stated below.</p>
+
+        <h3>Match Setup</h3>
+        <ul>
+          <li>Two (2) halves, 11 minutes of running time each.</li>
+        </ul>
+
+        <h3>Starting Possession</h3>
+        <ul>
+          <li>Starting possession of each half is determined by season ranking.</li>
+          <li>
+            If teams have the same rank:
+            <ul>
+              <li>One player from each team participates in a shoot-off</li>
+              <li>Make = possession</li>
+              <li>Miss = possession to the opposing team</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>Timeouts</h3>
+        <ul>
+          <li>Each team is granted one (1) timeout per half.</li>
+          <li>Timeouts do not carry over.</li>
+        </ul>
+
+        <h3>Team Foul Penalty — Tournament Games (11-minute halves)</h3>
+        <ul>
+          <li>Each team is allowed up to six (6) team fouls per half.</li>
+          <li>Team fouls include shooting fouls and reaching fouls only.</li>
+          <li>Once a team commits its 6th team foul, it enters the penalty.</li>
+          <li>
+            While in the penalty:
+            <ul>
+              <li>The offense is awarded two (2) free throws</li>
+              <li>After the free throws, possession is awarded to the defensive team</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>Overtime</h3>
+        <ul>
+          <li>Starting possession of each overtime period is determined by a shoot-for-ball.</li>
+        </ul>
+
+        <h3>Break Between Semi-Final and Final</h3>
+        <ul>
+          <li>A 15-minute break will be observed between the semifinal and the championship game before tip-off.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+{% endblock %}
