@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACE Seed Picking & Draft Room</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 24px;
+      color: #111827;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .tab-btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: #e5e7eb;
+      font-size: 15px;
+      font-weight: bold;
+    }
+    .tab-btn.active {
+      background: #111827;
+      color: white;
+    }
+    .tab-panel {
+      display: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    .settings-wrap {
+      position: relative;
+    }
+    .settings-btn {
+      background: #e5e7eb;
+      color: #111827;
+      white-space: nowrap;
+    }
+    .settings-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 48px;
+      width: min(720px, calc(100vw - 48px));
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      z-index: 20;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    }
+    .settings-menu.open {
+      display: block;
+    }
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .settings-header h2 {
+      margin-bottom: 6px;
+    }
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .primary {
+      background: #111827;
+      color: white;
+    }
+    .danger {
+      background: #dc2626;
+      color: white;
+    }
+    .secondary {
+      background: #2563eb;
+      color: white;
+    }
+    .ghost {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .result-row {
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 18px;
+    }
+    .history-item {
+      border-top: 1px solid #eee;
+      padding: 12px 0;
+    }
+    .muted {
+      color: #666;
+      font-size: 14px;
+    }
+    .system-message {
+      margin-top: 12px;
+      color: #2563eb;
+      font-weight: bold;
+      min-height: 22px;
+    }
+    .probability-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    .probability-table th,
+    .probability-table td {
+      padding: 10px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    .probability-table th {
+      background: #f9fafb;
+      font-size: 14px;
+    }
+    .season-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 10px;
+      align-items: end;
+      margin: 16px 0;
+    }
+    .manual-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      align-items: end;
+      margin: 16px 0;
+    }
+    .season-grid label {
+      display: block;
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .season-grid input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    .manual-grid label {
+      display: block;
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .manual-grid input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    .team-name {
+      font-weight: bold;
+      padding-bottom: 11px;
+    }
+    .draft-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .team-box {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      background: #fafafa;
+      transition: all 0.2s ease;
+    }
+    .team-box.active-turn {
+      background: #eff6ff;
+      border: 2px solid #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .team-box.active-turn h3 {
+      color: #1d4ed8;
+    }
+    .turn-badge {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .turn-badge.active {
+      background: #2563eb;
+      color: white;
+    }
+    .team-box h3 {
+      margin-bottom: 10px;
+    }
+    .team-list {
+      padding-left: 18px;
+      margin: 0;
+    }
+    .team-list li {
+      margin-bottom: 6px;
+    }
+    .pool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .player-btn {
+      width: 100%;
+      text-align: left;
+      background: #f9fafb;
+      border: 1px solid #d1d5db;
+      color: #111827;
+      margin: 0;
+    }
+    .player-btn:hover {
+      background: #eef2ff;
+    }
+    .captain-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .captain-row label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 15px;
+      background: white;
+    }
+    .on-clock {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .sequence-box {
+      line-height: 1.8;
+      font-size: 15px;
+    }
+    @media (max-width: 900px) {
+      .top-bar {
+        align-items: stretch;
+      }
+      .draft-grid,
+      .captain-row,
+      .season-grid,
+      .manual-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="seedTab">Seed Picking</button>
+        <button class="tab-btn" data-tab="draftTab">Player Draft</button>
+      </div>
+
+      <div class="settings-wrap">
+        <button class="settings-btn" id="settingsBtn" type="button">Settings</button>
+        <div id="settingsMenu" class="settings-menu">
+          <div class="settings-header">
+            <div>
+              <h2>Probability Setup</h2>
+              <div class="muted">
+                Calculate probabilities from last season win rate, or manually enter captain-agreed probabilities.
+                Any applied change updates the active seed odds for everyone connected.
+              </div>
+            </div>
+            <button class="ghost" id="closeSettingsBtn" type="button">Close</button>
+          </div>
+
+          <h3>Calculate From Wins</h3>
+          <div class="season-grid">
+            <div class="team-name">Team</div>
+            <div><label>Wins</label></div>
+
+            <div class="team-name">NPS</div>
+            <div><input id="npsWins" type="number" min="0" value="5" /></div>
+
+            <div class="team-name">KCN</div>
+            <div><input id="kcnWins" type="number" min="0" value="24" /></div>
+
+            <div class="team-name">BK</div>
+            <div><input id="bkWins" type="number" min="0" value="25" /></div>
+          </div>
+          <button class="secondary" id="calculateBtn">Calculate From Wins</button>
+
+          <h3>Manual Probabilities</h3>
+          <div class="manual-grid">
+            <div>
+              <label for="npsProbability">NPS Probability (%)</label>
+              <input id="npsProbability" type="number" min="1" max="98" value="50" />
+            </div>
+            <div>
+              <label for="kcnProbability">KCN Probability (%)</label>
+              <input id="kcnProbability" type="number" min="1" max="98" value="35" />
+            </div>
+            <div>
+              <label for="bkProbability">BK Probability (%)</label>
+              <input id="bkProbability" type="number" min="1" max="98" value="15" />
+            </div>
+          </div>
+          <button class="ghost" id="manualProbabilityBtn">Apply Manual Probabilities</button>
+          <div id="settingsMessage" class="system-message"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="seedTab" class="tab-panel active">
+      <div class="card">
+        <h1>🏀 ACE Seed Picking Room</h1>
+        <button class="primary" id="runBtn">Run Seed</button>
+        <button class="danger" id="clearBtn">Clear History</button>
+        <div id="systemMessage" class="system-message"></div>
+      </div>
+
+      <div class="card">
+        <h2>Current Seed Probabilities</h2>
+        <div class="muted">
+          These are the active odds that will be used when you run the next seed pick.
+        </div>
+        <div id="seedProbabilities">
+          <div class="muted">Loading probabilities...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Latest Result</h2>
+        <div id="latestResult">
+          <div class="muted">No result yet.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>History</h2>
+        <div id="history">
+          <div class="muted">No history yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="draftTab" class="tab-panel">
+      <div class="card">
+        <h1>🎯 ACE Player Draft Room</h1>
+        <div class="muted" style="margin-bottom: 12px;">
+          Set the 3 captains by seed first. Each captain is auto-assigned to their own team, then the remaining players are drafted in snake order:<br>
+          <strong>1 → 2 → 3 → 3 → 2 → 1 → 1 → 2 → 3 → 3 → 2 → 1 ...</strong>
+        </div>
+
+        <div class="captain-row">
+          <div>
+            <label for="captain1">1 Seed Captain</label>
+            <select id="captain1"></select>
+          </div>
+          <div>
+            <label for="captain2">2 Seed Captain</label>
+            <select id="captain2"></select>
+          </div>
+          <div>
+            <label for="captain3">3 Seed Captain</label>
+            <select id="captain3"></select>
+          </div>
+        </div>
+
+        <button class="secondary" id="startDraftBtn">Start Draft</button>
+        <button class="ghost" id="undoDraftBtn">Undo Last Pick</button>
+        <button class="danger" id="resetDraftBtn">Reset Draft</button>
+        <div id="draftMessage" class="system-message"></div>
+      </div>
+
+      <div class="card">
+        <h2>Draft Status</h2>
+        <div id="onClockBadge" class="on-clock">Not started</div>
+        <div id="pickSequence" class="sequence-box muted">Draft order will appear here.</div>
+      </div>
+
+      <div class="card">
+        <h2>Teams</h2>
+        <div class="draft-grid" id="teamsGrid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Available Players</h2>
+        <div id="playerPool" class="pool-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    const TEAM_NAMES = ["NPS", "KCN", "BK"];
+    const ALL_PLAYERS = [
+      "Alex Hahn",
+      "Allen 기준 Lee",
+      "Boum Soo Kim",
+      "Brian 병훈 Paek",
+      "Clan Hahn",
+      "Dae Young Roh",
+      "David 민형 Jin",
+      "Donggyu Lee",
+      "Dongjun Min",
+      "Edward 에디 Kim",
+      "Eric 형승 Lim",
+      "Johann Lee",
+      "Mike Hong",
+      "Min Hun 민훈 Paik",
+      "Minwoo Cho",
+      "Peter 석현 Yeon",
+      "Quinn 규현 Chung",
+      "Sangmin Moon",
+      "Shawn White",
+      "Tenzing Sherpa",
+      "Tong Young Ko"
+    ];
+
+    const TEAM_CAPTAINS = {
+      NPS: "Minwoo Cho",
+      KCN: "Quinn 규현 Chung",
+      BK: "Min Hun 민훈 Paik"
+    };
+
+    const runBtn = document.getElementById("runBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const settingsMenu = document.getElementById("settingsMenu");
+    const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+    const calculateBtn = document.getElementById("calculateBtn");
+    const manualProbabilityBtn = document.getElementById("manualProbabilityBtn");
+    const seedProbabilities = document.getElementById("seedProbabilities");
+    const latestResult = document.getElementById("latestResult");
+    const history = document.getElementById("history");
+    const systemMessage = document.getElementById("systemMessage");
+    const settingsMessage = document.getElementById("settingsMessage");
+    const seasonInputs = {
+      NPS: {
+        wins: document.getElementById("npsWins")
+      },
+      KCN: {
+        wins: document.getElementById("kcnWins")
+      },
+      BK: {
+        wins: document.getElementById("bkWins")
+      }
+    };
+    const manualProbabilityInputs = {
+      NPS: document.getElementById("npsProbability"),
+      KCN: document.getElementById("kcnProbability"),
+      BK: document.getElementById("bkProbability")
+    };
+
+    const captain1 = document.getElementById("captain1");
+    const captain2 = document.getElementById("captain2");
+    const captain3 = document.getElementById("captain3");
+    const startDraftBtn = document.getElementById("startDraftBtn");
+    const resetDraftBtn = document.getElementById("resetDraftBtn");
+    const undoDraftBtn = document.getElementById("undoDraftBtn");
+    const draftMessage = document.getElementById("draftMessage");
+    const onClockBadge = document.getElementById("onClockBadge");
+    const pickSequence = document.getElementById("pickSequence");
+    const teamsGrid = document.getElementById("teamsGrid");
+    const playerPool = document.getElementById("playerPool");
+    let draftStarted = false;
+
+    function initCaptainSelects() {
+      const selects = [captain1, captain2, captain3];
+      selects.forEach(select => {
+        select.innerHTML = '<option value="">Select captain</option>';
+        ALL_PLAYERS.forEach(player => {
+          const option = document.createElement("option");
+          option.value = player;
+          option.textContent = player;
+          select.appendChild(option);
+        });
+      });
+    }
+
+    function renderSeedProbabilities(items) {
+      if (!items || items.length === 0) {
+        seedProbabilities.innerHTML = '<div class="muted">No probabilities available.</div>';
+        return;
+      }
+
+      const seedLabels = items[0].seeds.map(seedInfo => seedInfo.seed);
+      let html = `
+        <table class="probability-table">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>Starting Weight</th>
+              ${seedLabels.map(seed => `<th>${seed} Seed</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      items.forEach(item => {
+        html += `
+          <tr>
+            <td><strong>${item.team}</strong></td>
+            <td>${item.weight}%</td>
+            ${item.seeds.map(seedInfo => `<td>${seedInfo.probability}%</td>`).join("")}
+          </tr>
+        `;
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+      seedProbabilities.innerHTML = html;
+    }
+
+    function renderManualProbabilityInputs(teamPercentages) {
+      if (!teamPercentages) return;
+
+      TEAM_NAMES.forEach(team => {
+        if (!manualProbabilityInputs[team]) return;
+        manualProbabilityInputs[team].value = teamPercentages[team];
+      });
+    }
+
+    function renderSeasonInputs(results) {
+      if (!results) return;
+
+      TEAM_NAMES.forEach(team => {
+        if (!results[team] || !seasonInputs[team]) return;
+        seasonInputs[team].wins.value = results[team].wins;
+      });
+    }
+
+    function collectSeasonResults() {
+      const seasonResults = {};
+      TEAM_NAMES.forEach(team => {
+        seasonResults[team] = {
+          wins: seasonInputs[team].wins.value
+        };
+      });
+      return seasonResults;
+    }
+
+    function collectManualProbabilities() {
+      const teamPercentages = {};
+      TEAM_NAMES.forEach(team => {
+        teamPercentages[team] = manualProbabilityInputs[team].value;
+      });
+      return teamPercentages;
+    }
+
+    function closeSettingsMenu() {
+      settingsMenu.classList.remove("open");
+    }
+
+    function renderSystemMessage(data) {
+      if (data.target === "settings") {
+        settingsMessage.textContent = data.message;
+        return;
+      }
+
+      systemMessage.textContent = data.message;
+    }
+
+    function renderResult(result) {
+      if (!result) {
+        latestResult.innerHTML = '<div class="muted">No result yet.</div>';
+        return;
+      }
+
+      let html = `<div class="muted">${result.timestamp}</div>`;
+      result.rows.forEach(row => {
+        html += `<div class="result-row"><strong>${row.seed} Seed</strong>: ${row.team} (${row.weight}%)</div>`;
+      });
+      latestResult.innerHTML = html;
+    }
+
+    function applyDefaultCaptains(result) {
+      if (!result?.rows?.length) return;
+
+      const selects = [captain1, captain2, captain3];
+      result.rows.forEach((row, index) => {
+        const captain = TEAM_CAPTAINS[row.team];
+        if (captain && selects[index]) {
+          selects[index].value = captain;
+        }
+      });
+    }
+
+    function renderHistory(items) {
+      if (!items || items.length === 0) {
+        history.innerHTML = '<div class="muted">No history yet.</div>';
+        return;
+      }
+
+      let html = "";
+      items.forEach((item, index) => {
+        html += `<div class="history-item">`;
+        html += `<div><strong>Run ${items.length - index}</strong></div>`;
+        html += `<div class="muted">${item.timestamp}</div>`;
+        item.rows.forEach(row => {
+          html += `<div>${row.seed} Seed: ${row.team} (${row.weight}%)</div>`;
+        });
+        html += `</div>`;
+      });
+      history.innerHTML = html;
+    }
+
+    function renderDraft(state) {
+      draftStarted = Boolean(state?.started);
+      const teams = state?.teams || { "1": [], "2": [], "3": [] };
+      const availablePlayers = state?.available_players || ALL_PLAYERS;
+      const sequence = state?.pick_sequence || [];
+      const currentPickIndex = state?.current_pick_index || 0;
+      const currentSeed = state?.current_seed;
+      const captains = state?.captains || {};
+      const lastPick = state?.last_pick || null;
+
+      [captain1, captain2, captain3].forEach((select, idx) => {
+        const seed = String(idx + 1);
+        if (captains[seed]) {
+          select.value = captains[seed];
+        }
+      });
+
+      if (!state?.started) {
+        onClockBadge.textContent = "Not started";
+      } else if (state.completed) {
+        onClockBadge.textContent = "Draft completed";
+      } else {
+        onClockBadge.textContent = `Seed ${currentSeed} is on the clock`;
+      }
+
+      if (!sequence.length) {
+        pickSequence.innerHTML = 'Draft order will appear here.';
+      } else {
+        const prettySequence = sequence.map((seed, idx) => {
+          if (!state.completed && idx === currentPickIndex) {
+            return `<strong>[${seed}]</strong>`;
+          }
+          return seed;
+        }).join(" → ");
+        pickSequence.innerHTML = prettySequence;
+      }
+
+      let teamsHtml = "";
+      [1, 2, 3].forEach(seed => {
+        const members = teams[String(seed)] || [];
+        const isActiveTurn = state?.started && !state?.completed && Number(currentSeed) === seed;
+        teamsHtml += `
+          <div class="team-box ${isActiveTurn ? 'active-turn' : ''}">
+            <div class="turn-badge ${isActiveTurn ? 'active' : ''}">${isActiveTurn ? 'NOW PICKING' : 'WAITING'}</div>
+            <h3>Seed ${seed} Team</h3>
+            <ol class="team-list">
+              ${members.length ? members.map(name => `<li>${name}</li>`).join("") : '<li class="muted">No players yet</li>'}
+            </ol>
+          </div>
+        `;
+      });
+      teamsGrid.innerHTML = teamsHtml;
+
+      if (!availablePlayers.length) {
+        playerPool.innerHTML = '<div class="muted">No players left in the pool.</div>';
+      } else {
+        const disabled = !state?.started || state?.completed;
+        playerPool.innerHTML = availablePlayers.map(player => {
+          const safePlayer = player
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+          return `<button class="player-btn" data-player="${safePlayer}" ${disabled ? 'disabled' : ''}>${safePlayer}</button>`;
+        }).join("");
+
+        playerPool.querySelectorAll('.player-btn').forEach(button => {
+          button.addEventListener('click', () => {
+            const player = button.getAttribute('data-player');
+            socket.emit('make_draft_pick', { player });
+          });
+        });
+      }
+
+      undoDraftBtn.disabled = !lastPick;
+      draftMessage.textContent = state?.message || "";
+    }
+
+    runBtn.addEventListener("click", () => {
+      socket.emit("run_seed", { count: 1 });
+    });
+
+    calculateBtn.addEventListener("click", () => {
+      settingsMessage.textContent = "";
+      socket.emit("calculate_probabilities", {
+        season_results: collectSeasonResults()
+      });
+    });
+
+    manualProbabilityBtn.addEventListener("click", () => {
+      settingsMessage.textContent = "";
+      socket.emit("set_manual_probabilities", {
+        team_percentages: collectManualProbabilities()
+      });
+    });
+
+    settingsBtn.addEventListener("click", () => {
+      settingsMenu.classList.toggle("open");
+    });
+
+    closeSettingsBtn.addEventListener("click", closeSettingsMenu);
+
+    document.addEventListener("click", (event) => {
+      if (!settingsMenu.classList.contains("open")) return;
+      if (settingsMenu.contains(event.target) || settingsBtn.contains(event.target)) return;
+      closeSettingsMenu();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      socket.emit("clear_history");
+    });
+
+    startDraftBtn.addEventListener("click", () => {
+      socket.emit("start_draft", {
+        captains: {
+          "1": captain1.value,
+          "2": captain2.value,
+          "3": captain3.value
+        }
+      });
+    });
+
+    undoDraftBtn.addEventListener("click", () => {
+      socket.emit("undo_draft_pick");
+    });
+
+    resetDraftBtn.addEventListener("click", () => {
+      socket.emit("reset_draft");
+    });
+
+    socket.on("state_init", (state) => {
+      renderSeasonInputs(state.season_results);
+      renderManualProbabilityInputs(state.team_percentages);
+      renderSeedProbabilities(state.seed_probabilities);
+      renderResult(state.latest_result);
+      renderHistory(state.history);
+      renderDraft(state.draft);
+      if (!draftStarted) {
+        applyDefaultCaptains(state.latest_result);
+      }
+    });
+
+    socket.on("seed_started", (data) => {
+      systemMessage.textContent = data.message;
+    });
+
+    socket.on("seed_result_batch", (data) => {
+      const results = data.results;
+      if (results.length > 0) {
+        const latestSeedResult = results[results.length - 1];
+        renderResult(latestSeedResult);
+        if (!draftStarted) {
+          applyDefaultCaptains(latestSeedResult);
+        }
+      }
+      systemMessage.textContent = "Seed picking completed.";
+    });
+
+    socket.on("history_updated", (data) => {
+      renderHistory(data.history);
+    });
+
+    socket.on("probabilities_updated", (data) => {
+      renderSeasonInputs(data.season_results);
+      renderManualProbabilityInputs(data.team_percentages);
+      renderSeedProbabilities(data.seed_probabilities);
+      closeSettingsMenu();
+    });
+
+    socket.on("system_message", (data) => {
+      renderSystemMessage(data);
+    });
+
+    socket.on("draft_state", (data) => {
+      renderDraft(data);
+    });
+
+    socket.on("draft_message", (data) => {
+      draftMessage.textContent = data.message;
+    });
+
+    document.querySelectorAll(".tab-btn").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.remove("active"));
+        button.classList.add("active");
+        document.getElementById(button.dataset.tab).classList.add("active");
+      });
+    });
+
+    initCaptainSelects();
+    renderDraft({
+      started: false,
+      completed: false,
+      teams: { "1": [], "2": [], "3": [] },
+      available_players: ALL_PLAYERS,
+      pick_sequence: [],
+      current_pick_index: 0,
+      current_seed: null,
+      last_pick: null,
+      message: "Select 3 captains and start the draft."
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACE Seed Picking</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 24px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    h1, h2 {
+      margin-top: 0;
+    }
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    .primary {
+      background: #111827;
+      color: white;
+    }
+    .danger {
+      background: #dc2626;
+      color: white;
+    }
+    .result-row {
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 18px;
+    }
+    .history-item {
+      border-top: 1px solid #eee;
+      padding: 12px 0;
+    }
+    .muted {
+      color: #666;
+      font-size: 14px;
+    }
+    #systemMessage {
+      margin-top: 12px;
+      color: #2563eb;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>🏀 ACE Seed Picking Room</h1>
+      <!-- <input type="number" id="count" min="1" max="100" value="1" /> -->
+      <button class="primary" id="runBtn">Run Seed</button>
+      <button class="danger" id="clearBtn">Clear History</button>
+      <div id="systemMessage"></div>
+    </div>
+
+    <div class="card">
+      <h2>Latest Result</h2>
+      <div id="latestResult">
+        <div class="muted">No result yet.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>History</h2>
+      <div id="history">
+        <div class="muted">No history yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    const runBtn = document.getElementById("runBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const latestResult = document.getElementById("latestResult");
+    const history = document.getElementById("history");
+    const systemMessage = document.getElementById("systemMessage");
+
+    function renderResult(result) {
+      if (!result) {
+        latestResult.innerHTML = '<div class="muted">No result yet.</div>';
+        return;
+      }
+
+      let html = `<div class="muted">${result.timestamp}</div>`;
+      result.rows.forEach(row => {
+        html += `<div class="result-row"><strong>${row.seed} Seed</strong>: ${row.team} (${row.weight}%)</div>`;
+      });
+      latestResult.innerHTML = html;
+    }
+
+    function renderHistory(items) {
+      if (!items || items.length === 0) {
+        history.innerHTML = '<div class="muted">No history yet.</div>';
+        return;
+      }
+
+      let html = "";
+      items.forEach((item, index) => {
+        html += `<div class="history-item">`;
+        html += `<div><strong>Run ${items.length - index}</strong></div>`;
+        html += `<div class="muted">${item.timestamp}</div>`;
+        item.rows.forEach(row => {
+          html += `<div>${row.seed} Seed: ${row.team} (${row.weight}%)</div>`;
+        });
+        html += `</div>`;
+      });
+      history.innerHTML = html;
+    }
+
+    // runBtn.addEventListener("click", () => {
+    //  const count = parseInt(document.getElementById("count").value || "1", 10);
+    //  socket.emit("run_seed", { count });
+    // });
+
+    runBtn.addEventListener("click", () => {
+      socket.emit("run_seed", { count: 1 });
+    });
+
+    clearBtn.addEventListener("click", () => {
+      socket.emit("clear_history");
+    });
+
+    socket.on("state_init", (state) => {
+      renderResult(state.latest_result);
+      renderHistory(state.history);
+    });
+
+    socket.on("seed_started", (data) => {
+      systemMessage.textContent = data.message;
+    });
+
+    socket.on("seed_result_batch", (data) => {
+      const results = data.results;
+      if (results.length > 0) {
+        renderResult(results[results.length - 1]); // 마지막 결과 표시
+      }
+      systemMessage.textContent = "Seed picking completed.";
+    });
+
+    socket.on("history_updated", (data) => {
+      renderHistory(data.history);
+    });
+
+    socket.on("system_message", (data) => {
+      systemMessage.textContent = data.message;
+    });
+  </script>
+</body>
+</html>
