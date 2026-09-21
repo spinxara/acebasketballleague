@@ -7,7 +7,7 @@ from copy import deepcopy
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this")
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 TEAM_NAMES = ["NPS", "KCN", "BK"]
 PROBABILITY_BLEND = 0.8
@@ -535,4 +535,10 @@ def handle_reset_draft():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
-    socketio.run(app, host="0.0.0.0", port=port, debug=debug)
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        debug=debug,
+        allow_unsafe_werkzeug=True,
+    )
