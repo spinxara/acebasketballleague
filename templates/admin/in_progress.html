@@ -1,0 +1,34 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ page_title }} · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <span class="progress-badge">In progress</span>
+    <h2>{{ page_title }}</h2>
+    <p class="lead">{{ page_summary }}</p>
+    <p class="note">{{ future_job }}</p>
+  </section>
+
+  <section class="card">
+    <h3>Not wired yet</h3>
+    <p class="note">
+      This admin page is a placeholder so the full site can be reviewed.
+      Data entry and Supabase writes will land here later.
+    </p>
+    <table class="placeholder-table">
+      <thead>
+        <tr>
+          <th>Action</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ page_title }} workflow</td>
+          <td>Coming soon</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

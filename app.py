@@ -9,6 +9,40 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
+RULES_URL = (
+    "https://docs.google.com/document/d/"
+    "1fIlVY1edEn2_5AAxF6eNV0D72vtWwOF4CamZVsxT8q0/edit?usp=sharing"
+)
+
+PUBLIC_NAV = [
+    {"id": "home", "label": "Home", "endpoint": "home"},
+    {"id": "season-results", "label": "Season Results", "endpoint": "season_results"},
+    {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
+    {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
+    {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
+    {"id": "draft", "label": "Draft Room", "endpoint": "draft_room"},
+]
+
+ADMIN_NAV = [
+    {"id": "dashboard", "label": "Dashboard", "endpoint": "admin_dashboard"},
+    {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
+    {"id": "games", "label": "Games", "endpoint": "admin_games"},
+    {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
+    {"id": "login", "label": "Login", "endpoint": "admin_login"},
+]
+
+
+@app.context_processor
+def inject_globals():
+    return {
+        "public_nav": PUBLIC_NAV,
+        "admin_nav": ADMIN_NAV,
+        "rules_url": RULES_URL,
+        "last_updated": "September 14, 2026",
+        "current_year": datetime.now().year,
+    }
+
+
 TEAM_NAMES = ["NPS", "KCN", "BK"]
 PROBABILITY_BLEND = 0.8
 
@@ -289,8 +323,154 @@ def emit_draft_state():
 
 
 @app.route("/")
-def index():
+def home():
+    return render_template("public/home.html", active="home")
+
+
+@app.route("/season-results")
+def season_results():
+    return render_template(
+        "public/in_progress.html",
+        active="season-results",
+        page_title="Season Results",
+        page_summary=(
+            "Season summaries, including champions, status, MIP awards, "
+            "match results, and video recordings."
+        ),
+        upcoming_columns=[
+            "Season",
+            "Status",
+            "Season Winner",
+            "Tournament Winner",
+            "MIP Award",
+        ],
+        extra_note="Match results and video recordings will also live on this page.",
+    )
+
+
+@app.route("/member-stats")
+def member_stats():
+    return render_template(
+        "public/in_progress.html",
+        active="member-stats",
+        page_title="Member Stats",
+        page_summary="Career player stats and game participation across all seasons.",
+        upcoming_columns=[
+            "Player",
+            "Total Games",
+            "Total Wins",
+            "Win Rate",
+            "Seasons",
+            "Season Titles",
+            "Season Runner-ups",
+            "Tournament Titles",
+            "Tournament Runner-ups",
+        ],
+    )
+
+
+@app.route("/player-stats")
+def player_stats():
+    return render_template(
+        "public/in_progress.html",
+        active="player-stats",
+        page_title="Player Stats by Season",
+        page_summary="Per-season player stats, grouped by team, with guest players listed last.",
+        upcoming_columns=[
+            "Season",
+            "Player",
+            "Season Team",
+            "Games",
+            "Wins",
+            "Win Rate",
+            "Comments",
+        ],
+    )
+
+
+@app.route("/team-matchups")
+def team_matchups():
+    return render_template(
+        "public/in_progress.html",
+        active="team-matchups",
+        page_title="Team Matchups",
+        page_summary="Head-to-head strength between teams for each season, including roster context.",
+        upcoming_columns=[
+            "Season",
+            "Team",
+            "Opponent",
+            "Games",
+            "Wins",
+            "Win Rate",
+            "Team Members",
+        ],
+    )
+
+
+@app.route("/draft")
+def draft_room():
     return render_template("index.html")
+
+
+@app.route("/admin")
+def admin_dashboard():
+    return render_template(
+        "admin/in_progress.html",
+        active="dashboard",
+        page_title="Dashboard",
+        page_summary="Overview of what captains and admins will manage for each season.",
+        future_job=(
+            "Season status, recent unsynced work, and shortcuts to roster, "
+            "games, and tournament entry."
+        ),
+    )
+
+
+@app.route("/admin/roster")
+def admin_roster():
+    return render_template(
+        "admin/in_progress.html",
+        active="roster",
+        page_title="Roster",
+        page_summary="Assign players to NPS, KCN, and BK for a season.",
+        future_job="Create and list team_members rows: season team, player, season, year, and starting month.",
+    )
+
+
+@app.route("/admin/games")
+def admin_games():
+    return render_template(
+        "admin/in_progress.html",
+        active="games",
+        page_title="Games",
+        page_summary="Record regular-season games and who played in each one.",
+        future_job=(
+            "Insert game_results, then player_played_games with game_id lookup "
+            "and guest status from the roster."
+        ),
+    )
+
+
+@app.route("/admin/tournament")
+def admin_tournament():
+    return render_template(
+        "admin/in_progress.html",
+        active="tournament",
+        page_title="Tournament",
+        page_summary="Enter tournament matches, winners, and play dates.",
+        future_job="Create and list tournament_matches: round, match number, teams, winner, and played_at.",
+    )
+
+
+@app.route("/admin/login")
+def admin_login():
+    return render_template(
+        "admin/in_progress.html",
+        active="login",
+        page_title="Login",
+        page_summary="Captains and admins will sign in here before managing league data.",
+        future_job="Shared password first, then individual captain accounts if needed.",
+    )
 
 
 @socketio.on("connect")

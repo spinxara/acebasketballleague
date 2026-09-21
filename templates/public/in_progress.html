@@ -1,0 +1,40 @@
+{% extends "public/base.html" %}
+
+{% block title %}{{ page_title }} · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <span class="progress-badge">In progress</span>
+    <h2>{{ page_title }}</h2>
+    <p class="lead">{{ page_summary }}</p>
+    {% if extra_note %}
+      <p class="note">{{ extra_note }}</p>
+    {% endif %}
+    <p class="note">This page will load from the existing Supabase stats tables. No live data yet.</p>
+  </section>
+
+  <section class="card">
+    <h3>Upcoming columns</h3>
+    <ul class="column-pills">
+      {% for column in upcoming_columns %}
+        <li>{{ column }}</li>
+      {% endfor %}
+    </ul>
+    <table class="placeholder-table">
+      <thead>
+        <tr>
+          {% for column in upcoming_columns %}
+            <th>{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for column in upcoming_columns %}
+            <td>Coming soon</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

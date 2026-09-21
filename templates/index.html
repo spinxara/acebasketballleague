@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ACE Basketball</title>
+  <title>ACE Seed Picking & Draft Room</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     body {
@@ -28,27 +28,6 @@
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-    }
-    .brand {
-      font-size: 22px;
-      font-weight: bold;
-      margin-bottom: 12px;
-    }
-    .hero-actions {
-      margin-top: 16px;
-    }
-    .team-home-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-top: 16px;
-    }
-    .team-home-card {
-      background: #f9fafb;
-      border-radius: 10px;
-      padding: 16px;
-      font-weight: bold;
-      text-align: center;
     }
     .top-bar {
       display: flex;
@@ -320,8 +299,7 @@
       .draft-grid,
       .captain-row,
       .season-grid,
-      .manual-grid,
-      .team-home-grid {
+      .manual-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -329,11 +307,9 @@
 </head>
 <body>
   <div class="container">
-    <div class="brand">ACE Basketball</div>
     <div class="top-bar">
       <div class="tabs">
-        <button class="tab-btn active" data-tab="homeTab">Home</button>
-        <button class="tab-btn" data-tab="seedTab">Seed Picking</button>
+        <button class="tab-btn active" data-tab="seedTab">Seed Picking</button>
         <button class="tab-btn" data-tab="draftTab">Player Draft</button>
       </div>
 
@@ -388,25 +364,7 @@
       </div>
     </div>
 
-    <div id="homeTab" class="tab-panel active">
-      <div class="card">
-        <h1>ACE Basketball</h1>
-        <div class="muted">
-          Home of the ACE league. Use this site for season tools, seed picking, and the live player draft.
-        </div>
-        <div class="team-home-grid">
-          <div class="team-home-card">NPS</div>
-          <div class="team-home-card">KCN</div>
-          <div class="team-home-card">BK</div>
-        </div>
-        <div class="hero-actions">
-          <button class="primary" type="button" data-open-tab="seedTab">Open Seed Picking</button>
-          <button class="secondary" type="button" data-open-tab="draftTab">Open Player Draft</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="seedTab" class="tab-panel">
+    <div id="seedTab" class="tab-panel active">
       <div class="card">
         <h1>🏀 ACE Seed Picking Room</h1>
         <button class="primary" id="runBtn">Run Seed</button>
@@ -885,24 +843,12 @@
       draftMessage.textContent = data.message;
     });
 
-    function showTab(tabId) {
-      document.querySelectorAll(".tab-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === tabId);
-      });
-      document.querySelectorAll(".tab-panel").forEach(panel => {
-        panel.classList.toggle("active", panel.id === tabId);
-      });
-    }
-
     document.querySelectorAll(".tab-btn").forEach(button => {
       button.addEventListener("click", () => {
-        showTab(button.dataset.tab);
-      });
-    });
-
-    document.querySelectorAll("[data-open-tab]").forEach(button => {
-      button.addEventListener("click", () => {
-        showTab(button.dataset.openTab);
+        document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.remove("active"));
+        button.classList.add("active");
+        document.getElementById(button.dataset.tab).classList.add("active");
       });
     });
 
