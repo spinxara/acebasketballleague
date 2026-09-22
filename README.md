@@ -1,17 +1,26 @@
-# ACE Seed Picking & Draft System
+# ACE Basketball League Site
 
-A Flask and Socket.IO web app for running weighted seed picks and managing a live snake draft for a small ACE league.
+A Flask and Socket.IO app for the ACE basketball league: public season stats, team moments, and an admin draft room for weighted seed picks and a live snake draft.
 
 Live site: https://seedpicking.daeyoungroh.com/
 
 ## Features
 
-- Weighted seed picking for three teams.
-- Top-right settings menu with a win-rate based calculator and manual captain-agreed odds.
+### Public site
+
+- Home page with league overview, rules, and social links.
+- Season results, member stats, player stats by season, and team matchups (loaded from Supabase).
+- Team moments photo gallery.
+- League game rules (version 3.1).
+
+### Admin
+
+- Password-protected captain login at `/admin`.
+- Draft room at `/admin/draft` with shared real-time state over Socket.IO.
+- Weighted seed picking for NPS, KCN, and BK.
+- Settings menu to calculate odds from last-season win rates or enter captain-agreed percentages.
 - Seed history with a maximum of 100 runs before clearing history is required.
-- Real-time shared draft state using Socket.IO.
-- Three-team player draft with captain selection.
-- Snake draft order:
+- Three-team snake draft:
 
 ```text
 1 -> 2 -> 3 -> 3 -> 2 -> 1 -> 1 -> 2 -> 3 -> 3 -> 2 -> 1 ...
@@ -19,64 +28,113 @@ Live site: https://seedpicking.daeyoungroh.com/
 
 - One-level undo for the most recent draft pick.
 - Full draft reset for choosing new captains and restarting.
+- Team moments upload and delete (JPEG, PNG, WEBP, or GIF; 10MB max; optional 280-character caption).
+- Placeholder pages for dashboard, roster, games, and tournament (not wired yet).
+
+Visiting `/draft` redirects to `/admin/draft`.
 
 ## Project Structure
 
 ```text
 .
-├── app.py                    # Main Flask/Socket.IO web server
+├── app.py                      # Flask / Socket.IO app
+├── requirements.txt
+├── runtime.txt                 # Python 3.12.8
 ├── templates/
-│   └── index.html            # Web UI
-├── seed_picking.py           # Telegram seed picking script
-├── seed_picking_server.py    # Telegram bot server script
-├── advanced_random_order.py  # Weighted draft order experiment
-└── app_v1.00.py              # Older app version
+│   ├── public/                 # Public league pages
+│   └── admin/                  # Login, draft room, moments, placeholders
+├── static/                     # CSS and JS
+└── supabase/
+    └── team_moments.sql        # Team Moments table and storage bucket
 ```
+
+Older files such as `app_v1.00.py` and `advanced_random_order.py` are leftover experiments and are not used by the current app.
 
 ## Requirements
 
-- Python 3
-- Flask
-- Flask-SocketIO
+- Python 3.12.8
+- Flask, Flask-SocketIO, python-dotenv, certifi, and Pillow
+- A `.env` file (see below)
 - Cloudflare tunnel, if exposing the app externally
 
-Install the Python dependencies:
+Create a virtual environment and install dependencies:
 
 ```bash
-pip install flask flask-socketio
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Run Locally
+## Environment
 
-Start the Flask server:
+Copy these into a `.env` file in the project root. `.env` is gitignored.
+
+```bash
+SECRET_KEY=change-this
+ADMIN_PASSWORD=your-admin-password
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_API_KEY=your-supabase-anon-or-service-key
+SESSION_COOKIE_SECURE=false
+FLASK_DEBUG=false
+PORT=5055
+```
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `SECRET_KEY` | Yes in production | Flask session signing. Default is `change-this`. |
+| `ADMIN_PASSWORD` | Yes for admin | Shared captain password. Admin login fails if this is empty. |
+| `SUPABASE_URL` | Yes for stats and moments | Project URL with no trailing slash. |
+| `SUPABASE_API_KEY` | Yes for stats and moments | Supabase API key used for REST and storage. |
+| `SESSION_COOKIE_SECURE` | No | Set `true` when serving over HTTPS. |
+| `FLASK_DEBUG` | No | Set `true` only for local development. |
+| `PORT` | No | Defaults to `5055`. |
+
+Without Supabase credentials, public stats and team moments pages load with an error. Seed picking and draft still work.
+
+## Run Locally
 
 ```bash
 python3 app.py
 ```
 
-The app runs on:
+The app listens on:
 
 ```text
-http://localhost:5050
+http://localhost:5055
 ```
+
+Public pages: `http://localhost:5055/`
+Admin: `http://localhost:5055/admin`
 
 ## External Access
 
-To expose the app through the configured Cloudflare tunnel, keep the Flask server running and start the tunnel:
+Keep the Flask server running, then start the configured Cloudflare tunnel:
 
 ```bash
 cloudflared tunnel run seedpicking
 ```
 
+Set `SESSION_COOKIE_SECURE=true` when the site is served over HTTPS.
+
 ## How To Use
 
-### Seed Picking
+### Public pages
 
-1. Open the web app.
-2. Click **Run Seed** to generate one or more weighted seed results.
-3. Clear history when the 100-run limit is reached.
+Open the home page and use the nav for season results, member stats, player stats, team matchups, team moments, and rules. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
 
-### Player Draft
+### Admin login
+
+1. Go to `/admin` and enter `ADMIN_PASSWORD`.
+2. Login is rate-limited: 5 failed attempts per IP in 10 minutes.
+
+### Seed picking
+
+1. Open **Draft Room**.
+2. Click **Run Seed** to generate weighted seed results.
+3. Use **Settings** to calculate odds from wins or enter manual percentages.
+4. Clear history when the 100-run limit is reached.
+
+### Player draft
 
 1. Select one captain for each of the three seeds.
 2. Click **Start Draft**.
@@ -84,11 +142,31 @@ cloudflared tunnel run seedpicking
 4. Use **Undo Last Pick** to revert the most recent pick.
 5. Use **Reset Draft** to clear the draft and start over.
 
+Draft state is shared live with everyone connected. Seed and draft socket events require an admin session.
+
+### Team moments
+
+1. Open **Team Moments** in admin.
+2. Upload one or more photos with an optional shared caption.
+3. Delete a moment to remove it from storage and the gallery.
+
+## Supabase
+
+Public stats pages expect these tables (or views):
+
+- `seasons`
+- `player_stats_total` (refreshed by `refresh_player_totals` when available)
+- `player_stats_by_season`
+- `team_matchup_strength`
+- `team_moments`
+
+Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
+
 ## Notes
 
 - The server must remain running while the app is in use.
-- Cloudflare tunnel is required for external access.
-- The app is designed for real-time shared use during live drafts.
+- Cloudflare tunnel is required for the current public hostname.
+- Roster, games, tournament, and dashboard admin pages are placeholders for later data-entry work.
 
 ## Maintainer
 
