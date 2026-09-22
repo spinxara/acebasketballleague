@@ -145,17 +145,22 @@ a {
   display: block;
 }
 
-.public-nav:has(+ .section-nav) {
-  padding-bottom: 4px;
+.public-nav:has(+ .section-nav-bar) {
+  padding-bottom: 16px;
+}
+
+.section-nav-bar {
+  background: #efe6cc;
+  border-top: 1px solid #d9c98a;
 }
 
 .section-nav {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 24px 16px;
+  padding: 12px 24px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .section-link {
@@ -163,9 +168,9 @@ a {
   text-decoration: none;
   padding: 7px 12px;
   border-radius: 999px;
-  border: 1px solid #3a3a3a;
-  background: transparent;
-  color: #e8e8e8;
+  border: 1px solid #d7cbae;
+  background: #fffdf8;
+  color: #111;
   font-weight: bold;
   font-size: 13px;
 }

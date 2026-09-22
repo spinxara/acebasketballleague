@@ -75,15 +75,17 @@
       {% endif %}
     {% endfor %}
     {% if section.item %}
-      <nav class="section-nav" aria-label="{{ section.item.label }}">
-        {% for child in section.item.children %}
-          <a
-            class="section-link{% if active == child.id %} active{% endif %}"
-            href="{{ url_for(child.endpoint) }}"
-            {% if active == child.id %}aria-current="page"{% endif %}
-          >{{ child.label }}</a>
-        {% endfor %}
-      </nav>
+      <div class="section-nav-bar">
+        <nav class="section-nav" aria-label="{{ section.item.label }}">
+          {% for child in section.item.children %}
+            <a
+              class="section-link{% if active == child.id %} active{% endif %}"
+              href="{{ url_for(child.endpoint) }}"
+              {% if active == child.id %}aria-current="page"{% endif %}
+            >{{ child.label }}</a>
+          {% endfor %}
+        </nav>
+      </div>
     {% endif %}
   </header>
 

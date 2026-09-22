@@ -10,11 +10,13 @@ Live site: https://acebasketballteam.com
 
 ### Public site
 
-- Home page with league overview, rules, and social links.
+- Home page with league overview, rules, social links, and sponsor logos.
 - About page with the Sunday schedule, Glendale court, and a Korean introduction.
+- Top navigation: Home, About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
 - Season results, member stats, player stats by season, and team matchups (loaded from Supabase).
 - Team moments photo gallery.
-- League game rules (version 3.1).
+- League game rules (version 3.1), linked from the home page and the footer.
+- Sponsor row on the home page and a "Supported by" line in the footer. Names, links, and logos live in `SPONSORS` in `app.py`.
 
 ### Admin
 
@@ -46,7 +48,7 @@ Visiting `/draft` redirects to `/admin/draft`.
 ├── templates/
 │   ├── public/                 # Public league pages
 │   └── admin/                  # Login, draft room, moments, placeholders
-├── static/                     # CSS and JS
+├── static/                     # CSS, JS, and sponsor logos in static/sponsors/
 └── supabase/
     └── team_moments.sql        # Team Moments table and storage bucket
 ```
@@ -124,7 +126,7 @@ On the Render service, set `SESSION_COOKIE_SECURE=true`. Set `SITE_URL` only if 
 
 ## Search
 
-Public pages include a description, canonical URL, and share tags. `/robots.txt` allows those pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs. Admin pages send `noindex, nofollow`.
+Public pages include a description, canonical URL, share tags, and SportsOrganization structured data (name, Glendale address, and social profiles). `/robots.txt` allows those pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs, including `/about`. Admin pages send `noindex, nofollow`.
 
 After deploy:
 
@@ -137,7 +139,11 @@ Indexing usually takes days to a few weeks.
 
 ### Public pages
 
-Open the home page and use the nav for season results, member stats, player stats, team matchups, team moments, and rules. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+Open the home page. Use Home, About, Stats, and Moments in the top nav. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Game rules are on the home page and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+
+### Sponsors
+
+Add or edit entries in `SPONSORS` in `app.py`. Each sponsor can have a name, an optional URL, an optional logo path under `static/`, and `featured: True` to show it first. The home page shows a logo when one is set, otherwise the name. Every sponsor name also appears in the footer. Current sponsors are Clan H. Hahn, MD and AD-VISOR Creative.
 
 ### Admin login
 
