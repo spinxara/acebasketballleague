@@ -92,8 +92,11 @@
 
   <div class="lightbox" data-lightbox aria-hidden="true">
     <button type="button" class="lightbox-close" data-lightbox-close aria-label="Close photo">Close</button>
+    <button type="button" class="lightbox-nav lightbox-prev" data-lightbox-prev hidden aria-label="Previous photo">Previous</button>
     <img data-lightbox-image alt="" />
+    <button type="button" class="lightbox-nav lightbox-next" data-lightbox-next hidden aria-label="Next photo">Next</button>
     <p class="lightbox-caption" data-lightbox-caption></p>
+    <p class="lightbox-counter" data-lightbox-counter hidden></p>
   </div>
 {% endblock %}
 

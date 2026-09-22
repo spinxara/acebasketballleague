@@ -4,7 +4,7 @@
 
 {% block content %}
   <div class="home-grid">
-    <section class="card">
+    <section class="card home-welcome">
       <div class="kicker">Welcome</div>
       <h2>Welcome to our official team page</h2>
       <p class="lead">
@@ -18,38 +18,75 @@
       <p class="note">Stats are generally updated every 2 regular season weeks.</p>
     </section>
 
-    <aside class="card">
-      <h3>League Game Rules</h3>
-      <p class="note">Official version 3.1</p>
-      <a class="rules-link" href="{{ url_for('league_rules') }}">
-        Open the official rules document
-      </a>
-    </aside>
-  </div>
+    <div class="home-sidebar">
+      <aside class="card">
+        <h3>League Game Rules</h3>
+        <p class="note">Official version 3.1</p>
+        <a class="rules-link" href="{{ url_for('league_rules') }}">
+          Open the official rules document
+        </a>
+      </aside>
 
-  <section class="card">
-    <h3>What's included</h3>
-    <ol class="included-list">
-      <li>
-        <a href="{{ url_for('season_results') }}">Season Results</a>
-        — Season summaries, including champions, match results, and video recordings.
-      </li>
-      <li>
-        <a href="{{ url_for('member_stats') }}">Member Stats</a>
-        — Player stats and game participation in total.
-      </li>
-      <li>
-        <a href="{{ url_for('player_stats') }}">Player Stats by Season</a>
-        — Per-season games, wins, and comments by team.
-      </li>
-      <li>
-        <a href="{{ url_for('team_matchups') }}">Team Matchups</a>
-        — Head-to-head strength between teams each season.
-      </li>
-      <li>
-        <a href="{{ url_for('team_moments') }}">Team Moments</a>
-        — Photos from games, hangouts, and league life.
-      </li>
-    </ol>
-  </section>
+      <aside class="card">
+        <h3>Follow ACE</h3>
+        <p class="note">Highlights, game film, and league updates.</p>
+        <div class="social-links">
+          <a
+            class="social-link"
+            href="{{ youtube_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.5 31.5 0 0 0 0 12a31.5 31.5 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.5 31.5 0 0 0 24 12a31.5 31.5 0 0 0-.5-5.8zM9.6 15.5V8.5L15.8 12z"
+              />
+            </svg>
+            YouTube Channel
+          </a>
+          <a
+            class="social-link"
+            href="{{ instagram_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm10 2H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm-5 3.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 14.5 12 2.5 2.5 0 0 0 12 9.5zm5.2-3.3a1.1 1.1 0 1 1-1.1 1.1 1.1 1.1 0 0 1 1.1-1.1z"
+              />
+            </svg>
+            Instagram
+          </a>
+        </div>
+      </aside>
+    </div>
+
+    <section class="card home-included">
+      <h3>What's included</h3>
+      <ol class="included-list">
+        <li>
+          <a href="{{ url_for('season_results') }}">Season Results</a>
+          — Season summaries, including champions, match results, and video recordings.
+        </li>
+        <li>
+          <a href="{{ url_for('member_stats') }}">Member Stats</a>
+          — Player stats and game participation in total.
+        </li>
+        <li>
+          <a href="{{ url_for('player_stats') }}">Player Stats by Season</a>
+          — Per-season games, wins, and comments by team.
+        </li>
+        <li>
+          <a href="{{ url_for('team_matchups') }}">Team Matchups</a>
+          — Head-to-head strength between teams each season.
+        </li>
+        <li>
+          <a href="{{ url_for('team_moments') }}">Team Moments</a>
+          — Photos from games, hangouts, and league life.
+        </li>
+      </ol>
+    </section>
+  </div>
 {% endblock %}

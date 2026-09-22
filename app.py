@@ -44,6 +44,8 @@ RULES_URL = (
     "https://docs.google.com/document/d/"
     "1fIlVY1edEn2_5AAxF6eNV0D72vtWwOF4CamZVsxT8q0/edit?usp=sharing"
 )
+YOUTUBE_URL = "https://www.youtube.com/channel/UCZ6oGz5C9yV2RgsykYvAOyA"
+INSTAGRAM_URL = "https://www.instagram.com/la_ace_basketball/"
 
 PUBLIC_NAV = [
     {"id": "home", "label": "Home", "endpoint": "home"},
@@ -128,6 +130,8 @@ def inject_globals():
         "public_nav": PUBLIC_NAV,
         "admin_nav": ADMIN_NAV,
         "rules_url": RULES_URL,
+        "youtube_url": YOUTUBE_URL,
+        "instagram_url": INSTAGRAM_URL,
         "last_updated": "September 14, 2026",
         "current_year": datetime.now().year,
         "is_admin": is_admin_session(),

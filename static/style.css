@@ -870,6 +870,55 @@ h3 {
   display: grid;
   grid-template-columns: 1.3fr 0.7fr;
   gap: 20px;
+  margin-bottom: 20px;
+}
+
+.home-grid > .card,
+.home-sidebar .card {
+  margin-bottom: 0;
+}
+
+.home-welcome {
+  height: 100%;
+}
+
+.home-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.home-included {
+  grid-column: 1 / -1;
+}
+
+.social-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.social-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #111;
+  color: white;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.social-link:hover {
+  background: #2a2a2a;
+}
+
+.social-link svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .moments-grid {
@@ -980,7 +1029,7 @@ h3 {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  padding: 24px;
+  padding: 72px 88px 24px;
   background: rgba(0, 0, 0, 0.84);
 }
 
@@ -1014,6 +1063,34 @@ h3 {
   color: #111;
   font-weight: bold;
   cursor: pointer;
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: white;
+  color: #111;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.lightbox-prev {
+  left: 16px;
+}
+
+.lightbox-next {
+  right: 16px;
+}
+
+.lightbox-counter {
+  margin: 8px 0 0;
+  color: #d6d6d6;
+  font-size: 13px;
 }
 
 .rules-layout {
@@ -1122,5 +1199,22 @@ h3 {
   .brand-copy h1,
   .admin-brand-copy h1 {
     font-size: 22px;
+  }
+
+  .lightbox {
+    padding: 64px 16px 16px;
+  }
+
+  .lightbox-nav {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .lightbox-prev {
+    left: 8px;
+  }
+
+  .lightbox-next {
+    right: 8px;
   }
 }
