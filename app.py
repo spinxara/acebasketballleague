@@ -50,6 +50,7 @@ SITE_URL = os.environ.get("SITE_URL", "https://acebasketballteam.com").rstrip("/
 WWW_HOST = "www.acebasketballteam.com"
 PUBLIC_SITEMAP_PATHS = (
     "/",
+    "/about",
     "/rules",
     "/season-results",
     "/member-stats",
@@ -63,15 +64,27 @@ SPONSORS = [
         "name": "Clan H. Hahn, MD",
         "featured": True,
     },
+    {
+        "name": "AD-VISOR Creative",
+        "url": "https://www.ad-visorcreative.com/",
+        "logo": "sponsors/ad-visor-creative.png",
+    },
 ]
 
 PUBLIC_NAV = [
     {"id": "home", "label": "Home", "endpoint": "home"},
-    {"id": "season-results", "label": "Season Results", "endpoint": "season_results"},
-    {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
-    {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
-    {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
-    {"id": "team-moments", "label": "Team Moments", "endpoint": "team_moments"},
+    {"id": "about", "label": "About", "endpoint": "about"},
+    {
+        "id": "stats",
+        "label": "Stats",
+        "children": [
+            {"id": "season-results", "label": "Season Results", "endpoint": "season_results"},
+            {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
+            {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
+            {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
+        ],
+    },
+    {"id": "team-moments", "label": "Moments", "endpoint": "team_moments"},
 ]
 
 ADMIN_NAV = [
@@ -176,10 +189,13 @@ def inject_globals():
             "sameAs": [YOUTUBE_URL, INSTAGRAM_URL],
             "address": {
                 "@type": "PostalAddress",
-                "addressLocality": "Los Angeles",
+                "streetAddress": "1219 Los Angeles St",
+                "addressLocality": "Glendale",
                 "addressRegion": "CA",
+                "postalCode": "91204",
                 "addressCountry": "US",
             },
+            "areaServed": "Los Angeles",
         },
     }
 
@@ -980,6 +996,11 @@ def sitemap_xml():
 @app.route("/")
 def home():
     return render_template("public/home.html", active="home")
+
+
+@app.route("/about")
+def about():
+    return render_template("public/about.html", active="about")
 
 
 @app.route("/rules")

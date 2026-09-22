@@ -36,12 +36,55 @@
     </div>
     <nav class="public-nav" aria-label="Public guidebook">
       {% for item in public_nav %}
-        <a
-          class="nav-link{% if active == item.id %} active{% endif %}"
-          href="{{ url_for(item.endpoint) }}"
-        >{{ item.label }}</a>
+        {% if item.children %}
+          {% set ns = namespace(child_active=false) %}
+          {% for child in item.children %}
+            {% if active == child.id %}{% set ns.child_active = true %}{% endif %}
+          {% endfor %}
+          <div class="nav-group">
+            <button
+              class="nav-link nav-menu-button{% if ns.child_active %} active{% endif %}"
+              type="button"
+              aria-expanded="false"
+              aria-controls="nav-{{ item.id }}"
+            >{{ item.label }}</button>
+            <div class="nav-submenu" id="nav-{{ item.id }}" role="menu" hidden>
+              {% for child in item.children %}
+                <a
+                  class="nav-link{% if active == child.id %} active{% endif %}"
+                  role="menuitem"
+                  href="{{ url_for(child.endpoint) }}"
+                >{{ child.label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <a
+            class="nav-link{% if active == item.id %} active{% endif %}"
+            href="{{ url_for(item.endpoint) }}"
+          >{{ item.label }}</a>
+        {% endif %}
       {% endfor %}
     </nav>
+    {% set section = namespace(item=none) %}
+    {% for item in public_nav %}
+      {% if item.children %}
+        {% for child in item.children %}
+          {% if active == child.id %}{% set section.item = item %}{% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+    {% if section.item %}
+      <nav class="section-nav" aria-label="{{ section.item.label }}">
+        {% for child in section.item.children %}
+          <a
+            class="section-link{% if active == child.id %} active{% endif %}"
+            href="{{ url_for(child.endpoint) }}"
+            {% if active == child.id %}aria-current="page"{% endif %}
+          >{{ child.label }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
   </header>
 
   <main class="container">
@@ -72,5 +115,43 @@
   </footer>
 
   {% block scripts %}{% endblock %}
+  <script>
+    (function () {
+      var groups = document.querySelectorAll(".nav-group");
+      if (!groups.length) return;
+
+      function setOpen(group, open) {
+        var button = group.querySelector(".nav-menu-button");
+        var menu = group.querySelector(".nav-submenu");
+        group.classList.toggle("open", open);
+        if (button) button.setAttribute("aria-expanded", open ? "true" : "false");
+        if (menu) menu.hidden = !open;
+      }
+
+      function closeAll(except) {
+        groups.forEach(function (group) {
+          if (group !== except) setOpen(group, false);
+        });
+      }
+
+      groups.forEach(function (group) {
+        var button = group.querySelector(".nav-menu-button");
+        if (!button) return;
+        button.addEventListener("click", function () {
+          var open = button.getAttribute("aria-expanded") === "true";
+          closeAll(group);
+          setOpen(group, !open);
+        });
+      });
+
+      document.addEventListener("click", function (event) {
+        if (!event.target.closest(".nav-group")) closeAll();
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeAll();
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -11,6 +11,7 @@ Live site: https://acebasketballteam.com
 ### Public site
 
 - Home page with league overview, rules, and social links.
+- About page with the Sunday schedule, Glendale court, and a Korean introduction.
 - Season results, member stats, player stats by season, and team matchups (loaded from Supabase).
 - Team moments photo gallery.
 - League game rules (version 3.1).
