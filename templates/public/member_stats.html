@@ -19,7 +19,7 @@
     {% else %}
       <p class="note">{{ players | length }} members</p>
       <div class="table-wrap">
-        <table class="stats-table sortable-table">
+        <table class="stats-table sortable-table stack-mobile">
           <thead>
             <tr>
               <th><button type="button" class="sort-btn">Player</button></th>
@@ -36,15 +36,15 @@
           <tbody>
             {% for row in players %}
               <tr>
-                <td>{{ row.player }}</td>
-                <td class="numeric">{{ row.total_games }}</td>
-                <td class="numeric">{{ row.total_wins }}</td>
-                <td class="numeric">{{ row.win_rate }}</td>
-                <td class="numeric">{{ row.total_seasons }}</td>
-                <td class="numeric">{{ row.season_titles }}</td>
-                <td class="numeric">{{ row.season_runnerups }}</td>
-                <td class="numeric">{{ row.tournament_titles }}</td>
-                <td class="numeric">{{ row.tournament_runnerups }}</td>
+                <td class="row-title">{{ row.player }}</td>
+                <td class="numeric" data-label="Games">{{ row.total_games }}</td>
+                <td class="numeric" data-label="Wins">{{ row.total_wins }}</td>
+                <td class="numeric" data-label="Win Rate">{{ row.win_rate }}</td>
+                <td class="numeric" data-label="Seasons">{{ row.total_seasons }}</td>
+                <td class="numeric" data-label="Season Titles">{{ row.season_titles }}</td>
+                <td class="numeric" data-label="Season Runner-ups">{{ row.season_runnerups }}</td>
+                <td class="numeric" data-label="Tournament Titles">{{ row.tournament_titles }}</td>
+                <td class="numeric" data-label="Tournament Runner-ups">{{ row.tournament_runnerups }}</td>
               </tr>
             {% endfor %}
           </tbody>

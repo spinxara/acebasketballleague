@@ -36,7 +36,7 @@
       {% else %}
         <p class="note">{{ players | length }} players in {{ selected_season }}</p>
         <div class="table-wrap">
-          <table class="stats-table sortable-table">
+          <table class="stats-table sortable-table stack-mobile">
             <thead>
               <tr>
                 <th><button type="button" class="sort-btn">Player</button></th>
@@ -50,14 +50,14 @@
             <tbody>
               {% for row in players %}
                 <tr>
-                  <td>{{ row.player }}</td>
-                  <td>
+                  <td class="row-title">{{ row.player }}</td>
+                  <td data-label="Team">
                     <span class="team-pill {{ row.team_class }}">{{ row.season_team }}</span>
                   </td>
-                  <td class="numeric">{{ row.season_games }}</td>
-                  <td class="numeric">{{ row.season_wins }}</td>
-                  <td class="numeric">{{ row.win_rate }}</td>
-                  <td>{{ row.comments or "—" }}</td>
+                  <td class="numeric" data-label="Games">{{ row.season_games }}</td>
+                  <td class="numeric" data-label="Wins">{{ row.season_wins }}</td>
+                  <td class="numeric" data-label="Win Rate">{{ row.win_rate }}</td>
+                  <td class="wrap-cell" data-label="Comments">{{ row.comments or "—" }}</td>
                 </tr>
               {% endfor %}
             </tbody>

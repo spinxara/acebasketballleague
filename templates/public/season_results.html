@@ -19,7 +19,7 @@
       <p class="note">No season records yet.</p>
     {% else %}
       <div class="table-wrap">
-        <table class="stats-table">
+        <table class="stats-table stack-mobile">
           <thead>
             <tr>
               <th>Season</th>
@@ -33,18 +33,18 @@
           <tbody>
             {% for row in seasons %}
               <tr>
-                <td>{{ row.season or "—" }}</td>
-                <td>
+                <td class="row-title">{{ row.season or "—" }}</td>
+                <td data-label="Status">
                   {% if row.status %}
                     <span class="status-pill {{ row.status_class }}">{{ row.status }}</span>
                   {% else %}
                     —
                   {% endif %}
                 </td>
-                <td>{{ row.season_winner or "—" }}</td>
-                <td>{{ row.tournament_winner or "—" }}</td>
-                <td>{{ row.mip_award or "—" }}</td>
-                <td>
+                <td data-label="Season Winner">{{ row.season_winner or "—" }}</td>
+                <td data-label="Tournament Winner">{{ row.tournament_winner or "—" }}</td>
+                <td data-label="MIP Award">{{ row.mip_award or "—" }}</td>
+                <td data-label="Season Page">
                   {% if row.season_page %}
                     <a class="table-link" href="{{ row.season_page }}" target="_blank" rel="noopener noreferrer">Open</a>
                   {% else %}

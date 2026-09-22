@@ -43,7 +43,7 @@
           {% endif %}
         </p>
         <div class="table-wrap">
-          <table class="stats-table sortable-table">
+          <table class="stats-table sortable-table stack-mobile">
             <thead>
               <tr>
                 {% if show_all %}
@@ -61,18 +61,18 @@
               {% for row in matchups %}
                 <tr>
                   {% if show_all %}
-                    <td>{{ row.season or "—" }}</td>
+                    <td data-label="Season">{{ row.season or "—" }}</td>
                   {% endif %}
-                  <td>
+                  <td class="row-title">
                     <span class="team-pill {{ row.team_class }}">{{ row.team }}</span>
                   </td>
-                  <td>
+                  <td data-label="vs">
                     <span class="team-pill {{ row.comp_team_class }}">{{ row.comp_team }}</span>
                   </td>
-                  <td class="numeric">{{ row.total_games }}</td>
-                  <td class="numeric">{{ row.wins_by_team }}</td>
-                  <td class="numeric">{{ row.win_rate }}</td>
-                  <td class="members-cell">{{ row.team_members or "—" }}</td>
+                  <td class="numeric" data-label="Games">{{ row.total_games }}</td>
+                  <td class="numeric" data-label="Wins">{{ row.wins_by_team }}</td>
+                  <td class="numeric" data-label="Win Rate">{{ row.win_rate }}</td>
+                  <td class="members-cell wrap-cell" data-label="Team Members">{{ row.team_members or "—" }}</td>
                 </tr>
               {% endfor %}
             </tbody>
