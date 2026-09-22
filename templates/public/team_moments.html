@@ -1,0 +1,59 @@
+{% extends "public/base.html" %}
+
+{% block title %}Team Moments · ACE Basketball League Guidebook & Stats{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Team Moments</h2>
+    <p class="lead">
+      Photos from games, hangouts, and league life.
+    </p>
+    <p class="note">Captains add new photos from the admin Team Moments page.</p>
+  </section>
+
+  <section class="card">
+    {% if load_error %}
+      <p class="error-note">Could not load team moments. {{ load_error }}</p>
+    {% elif not moments %}
+      <p class="note">No team photos yet.</p>
+    {% else %}
+      <p class="note">{{ moments | length }} photo{% if moments | length != 1 %}s{% endif %}</p>
+      <div class="moments-grid">
+        {% for moment in moments %}
+          <figure class="moment-card">
+            <button
+              type="button"
+              class="moment-thumb"
+              data-lightbox-open
+              data-src="{{ moment.image_url }}"
+              data-caption="{{ moment.caption }}"
+              aria-label="Open photo{% if moment.caption %}: {{ moment.caption }}{% endif %}"
+            >
+              <img
+                src="{{ moment.image_url }}"
+                alt="{{ moment.caption or 'Team moment' }}"
+                loading="lazy"
+              />
+            </button>
+            {% if moment.caption %}
+              <figcaption>{{ moment.caption }}</figcaption>
+            {% endif %}
+            {% if moment.created_label %}
+              <p class="moment-meta">{{ moment.created_label }}</p>
+            {% endif %}
+          </figure>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="lightbox" data-lightbox aria-hidden="true">
+    <button type="button" class="lightbox-close" data-lightbox-close aria-label="Close photo">Close</button>
+    <img data-lightbox-image alt="" />
+    <p class="lightbox-caption" data-lightbox-caption></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='moments.js') }}" defer></script>
+{% endblock %}

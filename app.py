@@ -10,13 +10,16 @@ import urllib.request
 from copy import deepcopy
 from datetime import datetime, timedelta
 from functools import wraps
+from io import BytesIO
 from threading import Lock
 from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 import certifi
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, emit
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 load_dotenv()
 
@@ -28,6 +31,7 @@ app.config["SESSION_COOKIE_SECURE"] = (
     os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
@@ -47,6 +51,7 @@ PUBLIC_NAV = [
     {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
     {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
     {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
+    {"id": "team-moments", "label": "Team Moments", "endpoint": "team_moments"},
 ]
 
 ADMIN_NAV = [
@@ -55,6 +60,7 @@ ADMIN_NAV = [
     {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
     {"id": "games", "label": "Games", "endpoint": "admin_games"},
     {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
+    {"id": "moments", "label": "Team Moments", "endpoint": "admin_moments"},
 ]
 
 
@@ -429,6 +435,11 @@ PLAYER_SEASON_COLUMNS = (
 TEAM_MATCHUP_COLUMNS = (
     "season,team,comp_team,total_games,wins_by_team,team_win_rate,team_members"
 )
+TEAM_MOMENTS_COLUMNS = "id,caption,storage_path,original_filename,created_at"
+TEAM_MOMENTS_BUCKET = "team-moments"
+MAX_MOMENT_BYTES = 10 * 1024 * 1024
+MAX_MOMENT_EDGE = 1920
+MAX_MOMENT_CAPTION = 280
 ALL_SEASONS_VALUE = "all"
 TEAM_COLOR_CLASSES = {
     "bk": "team-bk",
@@ -451,39 +462,62 @@ QUARTER_WEIGHT = {
 }
 
 
-def supabase_request(path, method="GET", body=None):
+def supabase_config():
     supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     api_key = os.environ.get("SUPABASE_API_KEY", "")
     if not supabase_url or not api_key:
         raise RuntimeError("Supabase is not configured.")
+    return supabase_url, api_key
 
+
+def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
+    request_headers = dict(headers or {})
+    http_request = urllib.request.Request(
+        url,
+        data=data,
+        headers=request_headers,
+        method=method,
+    )
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+
+    try:
+        with urllib.request.urlopen(
+            http_request, timeout=timeout, context=ssl_context
+        ) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 404:
+            if "team_moments" in body:
+                raise RuntimeError("The Team Moments table is not set up yet.") from exc
+            raise RuntimeError("Supabase table or file was not found.") from exc
+        raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError("Could not reach Supabase.") from exc
+
+
+def supabase_request(path, method="GET", body=None, extra_headers=None):
+    supabase_url, api_key = supabase_config()
     headers = {
         "apikey": api_key,
         "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
     }
+    if extra_headers:
+        headers.update(extra_headers)
+
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(body).encode("utf-8")
 
-    request = urllib.request.Request(
+    payload = supabase_http(
         f"{supabase_url}/rest/v1/{path}",
+        method=method,
         data=data,
         headers=headers,
-        method=method,
     )
-
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-
-    try:
-        with urllib.request.urlopen(request, timeout=15, context=ssl_context) as response:
-            return response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        exc.read()
-        raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError("Could not reach Supabase.") from exc
+    return payload.decode("utf-8")
 
 
 def fetch_supabase_rows(table, columns, order=None):
@@ -505,6 +539,79 @@ def fetch_supabase_rows(table, columns, order=None):
 
 def call_supabase_rpc(function_name):
     supabase_request(f"rpc/{function_name}", method="POST", body={})
+
+
+def parse_supabase_json(payload, empty=None):
+    if not payload:
+        return empty
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Unexpected Supabase response.") from exc
+
+
+def insert_supabase_row(table, row):
+    payload = supabase_request(
+        table,
+        method="POST",
+        body=row,
+        extra_headers={"Prefer": "return=representation"},
+    )
+    data = parse_supabase_json(payload)
+    if isinstance(data, list) and data:
+        return data[0]
+    if isinstance(data, dict):
+        return data
+    raise RuntimeError("Unexpected Supabase response.")
+
+
+def delete_supabase_row(table, row_id):
+    encoded = urllib.parse.quote(str(row_id), safe="")
+    supabase_request(f"{table}?id=eq.{encoded}", method="DELETE")
+
+
+def storage_object_url(storage_path):
+    supabase_url, _api_key = supabase_config()
+    encoded = urllib.parse.quote(storage_path, safe="/")
+    return f"{supabase_url}/storage/v1/object/{TEAM_MOMENTS_BUCKET}/{encoded}"
+
+
+def public_moment_url(storage_path):
+    supabase_url, _api_key = supabase_config()
+    encoded = urllib.parse.quote(storage_path, safe="/")
+    return f"{supabase_url}/storage/v1/object/public/{TEAM_MOMENTS_BUCKET}/{encoded}"
+
+
+def upload_moment_object(storage_path, data, content_type):
+    _supabase_url, api_key = supabase_config()
+    supabase_http(
+        storage_object_url(storage_path),
+        method="POST",
+        data=data,
+        headers={
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": content_type,
+            "x-upsert": "false",
+        },
+        timeout=45,
+    )
+
+
+def delete_moment_object(storage_path):
+    _supabase_url, api_key = supabase_config()
+    try:
+        supabase_http(
+            storage_object_url(storage_path),
+            method="DELETE",
+            headers={
+                "apikey": api_key,
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+    except RuntimeError as exc:
+        if "not found" not in str(exc).lower() and "(404)" not in str(exc):
+            raise
 
 
 def parse_season_label(label):
@@ -682,6 +789,106 @@ def load_team_matchups():
     return season_list, matchups
 
 
+def format_moment_date(value):
+    if not value:
+        return ""
+    text = str(value).replace("Z", "+00:00")
+    try:
+        stamp = datetime.fromisoformat(text)
+    except ValueError:
+        return str(value)
+    if stamp.tzinfo is not None:
+        stamp = stamp.astimezone().replace(tzinfo=None)
+    return stamp.strftime("%B %d, %Y").replace(" 0", " ")
+
+
+def prepare_moment_image(file_storage):
+    filename = (file_storage.filename or "").strip()
+    if not filename:
+        raise ValueError("Please choose at least one photo.")
+
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError(f"{filename} is empty.")
+    if len(raw) > MAX_MOMENT_BYTES:
+        raise ValueError(f"{filename} is larger than 10MB.")
+
+    suffix = os.path.splitext(filename)[1].lower()
+    jpeg_formats = {"JPEG", "JPG", "MPO"}
+    jpeg_suffixes = {".jpg", ".jpeg", ".jpe"}
+
+    try:
+        with Image.open(BytesIO(raw)) as source:
+            source.load()
+            format_name = (source.format or "").upper()
+            save_as_jpeg = format_name in jpeg_formats or suffix in jpeg_suffixes
+            if format_name not in {"JPEG", "JPG", "MPO", "PNG", "WEBP", "GIF"} and not save_as_jpeg:
+                raise ValueError(f"{filename} must be a JPEG, PNG, WEBP, or GIF.")
+            if format_name == "GIF" and getattr(source, "is_animated", False) and not save_as_jpeg:
+                return raw, "image/gif", ".gif"
+
+            image = ImageOps.exif_transpose(source)
+            if max(image.size) > MAX_MOMENT_EDGE:
+                image.thumbnail((MAX_MOMENT_EDGE, MAX_MOMENT_EDGE), Image.Resampling.LANCZOS)
+
+            output = BytesIO()
+            if save_as_jpeg:
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                try:
+                    image.save(output, format="JPEG", quality=88, optimize=True)
+                except OSError:
+                    output.seek(0)
+                    output.truncate(0)
+                    image.save(output, format="JPEG", quality=88)
+                return output.getvalue(), "image/jpeg", ".jpg"
+            if format_name == "PNG":
+                if image.mode not in {"RGB", "RGBA"}:
+                    image = image.convert("RGBA")
+                image.save(output, format="PNG", optimize=True)
+                return output.getvalue(), "image/png", ".png"
+            if format_name == "WEBP":
+                image.save(output, format="WEBP", quality=85, method=6)
+                return output.getvalue(), "image/webp", ".webp"
+            image.save(output, format="GIF")
+            return output.getvalue(), "image/gif", ".gif"
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError(f"{filename} is not a valid image.") from exc
+
+
+def load_team_moments():
+    rows = fetch_supabase_rows(
+        "team_moments",
+        TEAM_MOMENTS_COLUMNS,
+        order="created_at.desc",
+    )
+    moments = []
+    for row in rows:
+        storage_path = (row.get("storage_path") or "").strip()
+        if not storage_path:
+            continue
+        moments.append({
+            "id": row.get("id") or "",
+            "caption": (row.get("caption") or "").strip(),
+            "storage_path": storage_path,
+            "original_filename": (row.get("original_filename") or "").strip(),
+            "image_url": public_moment_url(storage_path),
+            "created_label": format_moment_date(row.get("created_at")),
+        })
+    return moments
+
+
+def fetch_moment_by_id(moment_id):
+    encoded = urllib.parse.quote(str(moment_id), safe="")
+    payload = supabase_request(
+        f"team_moments?id=eq.{encoded}&select={TEAM_MOMENTS_COLUMNS}"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    return rows[0] if rows else None
+
+
 @app.route("/")
 def home():
     return render_template("public/home.html", active="home")
@@ -751,6 +958,23 @@ def player_stats():
         seasons=seasons,
         selected_season=selected_season,
         players=players,
+        load_error=load_error,
+    )
+
+
+@app.route("/team-moments")
+def team_moments():
+    load_error = None
+    moments = []
+    try:
+        moments = load_team_moments()
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    return render_template(
+        "public/team_moments.html",
+        active="team-moments",
+        moments=moments,
         load_error=load_error,
     )
 
@@ -838,6 +1062,97 @@ def admin_games():
             "and guest status from the roster."
         ),
     )
+
+
+@app.route("/admin/moments", methods=["GET", "POST"])
+def admin_moments():
+    if request.method == "POST":
+        files = [
+            item for item in request.files.getlist("photos") if item and item.filename
+        ]
+        caption = (request.form.get("caption") or "").strip()
+        if len(caption) > MAX_MOMENT_CAPTION:
+            flash("Captions can be 280 characters or less.", "error")
+            return redirect(url_for("admin_moments"))
+        if not files:
+            flash("Please choose at least one photo.", "error")
+            return redirect(url_for("admin_moments"))
+
+        saved = 0
+        try:
+            for file_storage in files:
+                data, content_type, extension = prepare_moment_image(file_storage)
+                storage_path = f"{uuid4().hex}{extension}"
+                upload_moment_object(storage_path, data, content_type)
+                try:
+                    insert_supabase_row(
+                        "team_moments",
+                        {
+                            "caption": caption or None,
+                            "storage_path": storage_path,
+                            "original_filename": (file_storage.filename or "")[:200],
+                        },
+                    )
+                except RuntimeError:
+                    delete_moment_object(storage_path)
+                    raise
+                saved += 1
+        except (RuntimeError, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("admin_moments"))
+
+        flash(
+            f"Uploaded {saved} photo{'s' if saved != 1 else ''}.",
+            "success",
+        )
+        return redirect(url_for("admin_moments"))
+
+    load_error = None
+    moments = []
+    try:
+        moments = load_team_moments()
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    return render_template(
+        "admin/team_moments.html",
+        active="moments",
+        moments=moments,
+        load_error=load_error,
+    )
+
+
+@app.route("/admin/moments/<moment_id>/delete", methods=["POST"])
+def admin_delete_moment(moment_id):
+    try:
+        UUID(str(moment_id))
+    except ValueError:
+        flash("That photo could not be found.", "error")
+        return redirect(url_for("admin_moments"))
+
+    try:
+        row = fetch_moment_by_id(moment_id)
+        if not row:
+            flash("That photo could not be found.", "error")
+            return redirect(url_for("admin_moments"))
+        storage_path = (row.get("storage_path") or "").strip()
+        if storage_path:
+            delete_moment_object(storage_path)
+        delete_supabase_row("team_moments", moment_id)
+    except RuntimeError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin_moments"))
+
+    flash("Photo deleted.", "success")
+    return redirect(url_for("admin_moments"))
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    if request.path.startswith("/admin/moments"):
+        flash("Those photos are too large. Each file must be 10MB or smaller.", "error")
+        return redirect(url_for("admin_moments"))
+    return "Request too large", 413
 
 
 @app.route("/admin/tournament")

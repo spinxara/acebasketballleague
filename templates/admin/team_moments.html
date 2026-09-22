@@ -1,0 +1,102 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Team Moments · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Team Moments</h2>
+    <p class="lead">Upload photos for the public Team Moments gallery.</p>
+    <p class="note">JPEG, PNG, WEBP, or GIF. Each photo can be up to 10MB. Large phone photos are resized automatically.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="form-messages">
+          {% for category, message in messages %}
+            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form
+      class="upload-form"
+      method="post"
+      action="{{ url_for('admin_moments') }}"
+      enctype="multipart/form-data"
+    >
+      <label for="photos">Photos</label>
+      <input
+        id="photos"
+        name="photos"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+        multiple
+        required
+      />
+      <label for="caption">Caption (optional)</label>
+      <input
+        id="caption"
+        name="caption"
+        type="text"
+        maxlength="280"
+        placeholder="Game night, tournament, hangout..."
+      />
+      <button class="login-submit" type="submit">Upload photos</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h3>Gallery</h3>
+    {% if load_error %}
+      <p class="error-note">Could not load team moments. {{ load_error }}</p>
+    {% elif not moments %}
+      <p class="note">No team photos yet.</p>
+    {% else %}
+      <p class="note">{{ moments | length }} photo{% if moments | length != 1 %}s{% endif %} on the public page.</p>
+      <div class="moments-grid">
+        {% for moment in moments %}
+          <figure class="moment-card">
+            <button
+              type="button"
+              class="moment-thumb"
+              data-lightbox-open
+              data-src="{{ moment.image_url }}"
+              data-caption="{{ moment.caption }}"
+              aria-label="Open photo{% if moment.caption %}: {{ moment.caption }}{% endif %}"
+            >
+              <img
+                src="{{ moment.image_url }}"
+                alt="{{ moment.caption or 'Team moment' }}"
+                loading="lazy"
+              />
+            </button>
+            {% if moment.caption %}
+              <figcaption>{{ moment.caption }}</figcaption>
+            {% endif %}
+            {% if moment.created_label %}
+              <p class="moment-meta">{{ moment.created_label }}</p>
+            {% endif %}
+            <form
+              class="moment-delete"
+              method="post"
+              action="{{ url_for('admin_delete_moment', moment_id=moment.id) }}"
+              onsubmit="return confirm('Delete this photo?');"
+            >
+              <button class="danger-btn" type="submit">Delete</button>
+            </form>
+          </figure>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="lightbox" data-lightbox aria-hidden="true">
+    <button type="button" class="lightbox-close" data-lightbox-close aria-label="Close photo">Close</button>
+    <img data-lightbox-image alt="" />
+    <p class="lightbox-caption" data-lightbox-caption></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='moments.js') }}" defer></script>
+{% endblock %}
