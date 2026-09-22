@@ -7,7 +7,7 @@
   <section class="card">
     <h1>Season Results</h1>
     <p class="lead">
-      Season summaries, including champions, status, MIP awards,
+      Season summaries, including champions, status, MIP awards, notes,
       match results, and video recordings.
     </p>
     <p class="note">Match results and video recordings will also live on this page.</p>
@@ -28,6 +28,7 @@
               <th>Season Winner</th>
               <th>Tournament Winner</th>
               <th>MIP Award</th>
+              <th>Notes</th>
               <th>Season Page</th>
             </tr>
           </thead>
@@ -45,6 +46,7 @@
                 <td data-label="Season Winner">{{ row.season_winner or "—" }}</td>
                 <td data-label="Tournament Winner">{{ row.tournament_winner or "—" }}</td>
                 <td data-label="MIP Award">{{ row.mip_award or "—" }}</td>
+                <td class="wrap-cell notes-cell" data-label="Notes">{{ row.notes or "—" }}</td>
                 <td data-label="Season Page">
                   {% if row.season_page %}
                     <a class="table-link" href="{{ row.season_page }}" target="_blank" rel="noopener noreferrer">Open</a>

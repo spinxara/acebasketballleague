@@ -468,6 +468,12 @@ h3 {
   margin: 0;
 }
 
+.notes-cell {
+  max-width: 240px;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
 .table-link {
   color: #7a5b00;
   font-weight: bold;
@@ -1443,6 +1449,7 @@ h3 {
   .stack-mobile td.wrap-cell {
     display: block;
     min-width: 0;
+    max-width: none;
     font-size: 14px;
     line-height: 1.45;
   }

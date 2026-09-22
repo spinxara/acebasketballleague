@@ -501,7 +501,7 @@ def emit_draft_state():
     socketio.emit("draft_state", shared_state["draft"])
 
 
-SEASON_COLUMNS = "season,status,season_winner,tournament_winner,mip_award,season_page"
+SEASON_COLUMNS = "season,status,season_winner,tournament_winner,mip_award,season_page,notes"
 MEMBER_STATS_COLUMNS = (
     "player,total_games,total_wins,total_win_rates,total_seasons,"
     "season_titles,season_runnerups,tournament_titles,tournament_runnerups"
@@ -736,6 +736,7 @@ def load_season_records():
             "tournament_winner": row.get("tournament_winner") or "",
             "mip_award": row.get("mip_award") or "",
             "season_page": season_page_url(row.get("season_page")),
+            "notes": (row.get("notes") or "").strip(),
             "status_class": season_status_class(row.get("status")),
         }
         for row in rows
