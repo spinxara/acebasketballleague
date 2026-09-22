@@ -2,7 +2,9 @@
 
 A Flask and Socket.IO app for the ACE basketball league: public season stats, team moments, and an admin draft room for weighted seed picks and a live snake draft.
 
-Live site: https://seedpicking.daeyoungroh.com/
+Live site: https://acebasketballteam.com
+
+`https://www.acebasketballteam.com` redirects to that address.
 
 ## Features
 
@@ -55,7 +57,7 @@ Older files such as `app_v1.00.py` and `advanced_random_order.py` are leftover e
 - Python 3.12.8
 - Flask, Flask-SocketIO, python-dotenv, certifi, and Pillow
 - A `.env` file (see below)
-- Cloudflare tunnel, if exposing the app externally
+- A Render web service for the public site
 
 Create a virtual environment and install dependencies:
 
@@ -77,6 +79,7 @@ SUPABASE_API_KEY=your-supabase-anon-or-service-key
 SESSION_COOKIE_SECURE=false
 FLASK_DEBUG=false
 PORT=5055
+SITE_URL=https://acebasketballteam.com
 ```
 
 | Variable | Required | Notes |
@@ -88,6 +91,7 @@ PORT=5055
 | `SESSION_COOKIE_SECURE` | No | Set `true` when serving over HTTPS. |
 | `FLASK_DEBUG` | No | Set `true` only for local development. |
 | `PORT` | No | Defaults to `5055`. |
+| `SITE_URL` | No | Canonical public URL with no trailing slash. Defaults to `https://acebasketballteam.com`. |
 
 Without Supabase credentials, public stats and team moments pages load with an error. Seed picking and draft still work.
 
@@ -106,15 +110,27 @@ http://localhost:5055
 Public pages: `http://localhost:5055/`
 Admin: `http://localhost:5055/admin`
 
-## External Access
+## Render
 
-Keep the Flask server running, then start the configured Cloudflare tunnel:
+The public site is a Render web service. Attach both custom domains:
 
-```bash
-cloudflared tunnel run seedpicking
-```
+- `acebasketballteam.com`
+- `www.acebasketballteam.com`
 
-Set `SESSION_COOKIE_SECURE=true` when the site is served over HTTPS.
+Requests to the `www` host redirect to the same path on `https://acebasketballteam.com`. Localhost and the `onrender.com` service URL are left as they are.
+
+On the Render service, set `SESSION_COOKIE_SECURE=true`. Set `SITE_URL` only if the public URL should differ from the default.
+
+## Search
+
+Public pages include a description, canonical URL, and share tags. `/robots.txt` allows those pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs. Admin pages send `noindex, nofollow`.
+
+After deploy:
+
+1. In Google Search Console, add a domain property for `acebasketballteam.com`, verify it with a DNS record at the domain registrar, and submit `https://acebasketballteam.com/sitemap.xml`.
+2. Put `https://acebasketballteam.com` in the Instagram bio and the YouTube channel About section.
+
+Indexing usually takes days to a few weeks.
 
 ## How To Use
 
@@ -164,8 +180,7 @@ Team Moments also uses a public `team-moments` storage bucket. To create the tab
 
 ## Notes
 
-- The server must remain running while the app is in use.
-- Cloudflare tunnel is required for the current public hostname.
+- The Render service must stay running for the public site and for Google to crawl it.
 - Roster, games, tournament, and dashboard admin pages are placeholders for later data-entry work.
 
 ## Maintainer

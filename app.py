@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 import certifi
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, emit
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -46,6 +46,24 @@ RULES_URL = (
 )
 YOUTUBE_URL = "https://www.youtube.com/channel/UCZ6oGz5C9yV2RgsykYvAOyA"
 INSTAGRAM_URL = "https://www.instagram.com/la_ace_basketball/"
+SITE_URL = os.environ.get("SITE_URL", "https://acebasketballteam.com").rstrip("/")
+WWW_HOST = "www.acebasketballteam.com"
+PUBLIC_SITEMAP_PATHS = (
+    "/",
+    "/rules",
+    "/season-results",
+    "/member-stats",
+    "/player-stats",
+    "/team-matchups",
+    "/team-moments",
+)
+
+SPONSORS = [
+    {
+        "name": "Clan H. Hahn, MD",
+        "featured": True,
+    },
+]
 
 PUBLIC_NAV = [
     {"id": "home", "label": "Home", "endpoint": "home"},
@@ -71,7 +89,12 @@ def is_admin_session():
 
 
 def client_ip():
-    return request.headers.get("CF-Connecting-IP") or request.remote_addr or "unknown"
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return request.remote_addr or "unknown"
 
 
 def login_is_blocked(ip):
@@ -126,16 +149,50 @@ def admin_socket_required(handler):
 
 @app.context_processor
 def inject_globals():
+    path = request.path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    logo_url = SITE_URL + url_for("static", filename="logo.png")
     return {
         "public_nav": PUBLIC_NAV,
         "admin_nav": ADMIN_NAV,
         "rules_url": RULES_URL,
         "youtube_url": YOUTUBE_URL,
         "instagram_url": INSTAGRAM_URL,
+        "sponsors": sorted(SPONSORS, key=lambda sponsor: not sponsor.get("featured")),
         "last_updated": "September 14, 2026",
         "current_year": datetime.now().year,
         "is_admin": is_admin_session(),
+        "site_url": SITE_URL,
+        "canonical_url": SITE_URL + path,
+        "logo_url": logo_url,
+        "organization_schema": {
+            "@context": "https://schema.org",
+            "@type": "SportsOrganization",
+            "name": "ACE Basketball League",
+            "sport": "Basketball",
+            "url": SITE_URL + "/",
+            "logo": logo_url,
+            "sameAs": [YOUTUBE_URL, INSTAGRAM_URL],
+            "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "Los Angeles",
+                "addressRegion": "CA",
+                "addressCountry": "US",
+            },
+        },
     }
+
+
+@app.before_request
+def redirect_www_host():
+    host = (request.host or "").split(":")[0].lower()
+    if host != WWW_HOST:
+        return None
+    target = SITE_URL + (request.full_path or "/")
+    if target.endswith("?"):
+        target = target[:-1]
+    return redirect(target, code=301)
 
 
 @app.before_request
@@ -891,6 +948,33 @@ def fetch_moment_by_id(moment_id):
     if not isinstance(rows, list):
         raise RuntimeError("Unexpected Supabase response.")
     return rows[0] if rows else None
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /admin\n"
+        "Disallow: /draft\n"
+        "\n"
+        f"Sitemap: {SITE_URL}/sitemap.xml\n"
+    )
+    return Response(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for path in PUBLIC_SITEMAP_PATHS:
+        lines.append("  <url>")
+        lines.append(f"    <loc>{SITE_URL}{path}</loc>")
+        lines.append("  </url>")
+    lines.append("</urlset>")
+    return Response("\n".join(lines) + "\n", mimetype="application/xml")
 
 
 @app.route("/")

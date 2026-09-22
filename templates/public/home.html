@@ -1,12 +1,16 @@
 {% extends "public/base.html" %}
 
 {% block title %}Home · ACE Basketball League Guidebook & Stats{% endblock %}
+{% block description %}Official page for ACE Basketball League in Los Angeles, with season results, player stats, team matchups, rules, and photos.{% endblock %}
 
 {% block content %}
   <div class="home-grid">
     <section class="card home-welcome">
       <div class="kicker">Welcome</div>
-      <h2>Welcome to our official team page</h2>
+      <h1>Welcome to our official team page</h1>
+      <p class="lead">
+        This is the official page for ACE Basketball League in Los Angeles.
+      </p>
       <p class="lead">
         This site is designed to help us stay organized and track everything from
         our seasons—game results, player stats, schedules, and awards.
@@ -88,5 +92,39 @@
         </li>
       </ol>
     </section>
+
+    {% if sponsors %}
+      <section class="card home-sponsors">
+        <div class="kicker">Sponsors</div>
+        <h3>Our Sponsors</h3>
+        <div class="sponsor-row">
+          {% for sponsor in sponsors %}
+            {% if sponsor.url %}
+              <a
+                class="sponsor-tile{% if sponsor.featured %} featured{% endif %}"
+                href="{{ sponsor.url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+            {% else %}
+              <div class="sponsor-tile{% if sponsor.featured %} featured{% endif %}">
+            {% endif %}
+              {% if sponsor.logo %}
+                <img
+                  src="{{ url_for('static', filename=sponsor.logo) }}"
+                  alt="{{ sponsor.name }}"
+                />
+              {% else %}
+                <span class="sponsor-name">{{ sponsor.name }}</span>
+              {% endif %}
+            {% if sponsor.url %}
+              </a>
+            {% else %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
   </div>
 {% endblock %}

@@ -4,6 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}ACE Basketball League Guidebook & Stats{% endblock %}</title>
+  <meta name="description" content="{% block description %}Official page for ACE Basketball League in Los Angeles, with season results, player stats, team matchups, rules, and photos.{% endblock %}" />
+  <link rel="canonical" href="{{ canonical_url }}" />
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ACE Basketball League" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:title" content="{{ self.title() }}" />
+  <meta property="og:description" content="{{ self.description() }}" />
+  <meta property="og:url" content="{{ canonical_url }}" />
+  <meta property="og:image" content="{{ logo_url }}" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="{{ self.title() }}" />
+  <meta name="twitter:description" content="{{ self.description() }}" />
+  <meta name="twitter:image" content="{{ logo_url }}" />
+  <script type="application/ld+json">{{ organization_schema | tojson }}</script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body class="public-body">
@@ -12,10 +27,10 @@
       <img
         class="logo-mark"
         src="{{ url_for('static', filename='logo.png') }}"
-        alt="LA ACE Basketball"
+        alt="ACE Basketball League"
       />
       <div class="brand-copy">
-        <h1>ACE Basketball League Guidebook & Stats</h1>
+        <p class="brand-title">ACE Basketball League Guidebook & Stats</p>
         <p class="meta-line">Stats Last Updated: {{ last_updated }}</p>
       </div>
     </div>
@@ -34,12 +49,25 @@
   </main>
 
   <footer class="site-footer">
+    {% if sponsors %}
+      <p class="footer-sponsors">
+        Supported by
+        {% for sponsor in sponsors %}
+          {% if sponsor.url %}
+            <a href="{{ sponsor.url }}" target="_blank" rel="noopener noreferrer">{{ sponsor.name }}</a>
+          {% else %}
+            <span>{{ sponsor.name }}</span>
+          {% endif %}{% if not loop.last %} &middot; {% endif %}
+        {% endfor %}
+        and our team members
+      </p>
+    {% endif %}
     <span>ACE Basketball League &middot; {{ current_year }}</span>
     <div class="footer-links">
       <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer">YouTube</a>
       <a href="{{ instagram_url }}" target="_blank" rel="noopener noreferrer">Instagram</a>
       <a href="{{ url_for('league_rules') }}">Game Rules</a>
-      <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+      <a href="{{ url_for('admin_dashboard') }}" rel="nofollow">Admin</a>
     </div>
   </footer>
 
