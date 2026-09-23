@@ -46,6 +46,11 @@ RULES_URL = (
 )
 YOUTUBE_URL = "https://www.youtube.com/channel/UCZ6oGz5C9yV2RgsykYvAOyA"
 INSTAGRAM_URL = "https://www.instagram.com/la_ace_basketball/"
+MAINTAINER_NAME = "Dae Young Roh"
+# Split so the address is never rendered as plain text; the footer and About
+# page reassemble it in the browser.
+MAINTAINER_EMAIL_USER = "spinxara"
+MAINTAINER_EMAIL_DOMAIN = "gmail.com"
 SITE_URL = os.environ.get("SITE_URL", "https://acebasketballteam.com").rstrip("/")
 WWW_HOST = "www.acebasketballteam.com"
 PUBLIC_SITEMAP_PATHS = (
@@ -175,6 +180,9 @@ def inject_globals():
         "sponsors": sorted(SPONSORS, key=lambda sponsor: not sponsor.get("featured")),
         "last_updated": "September 14, 2026",
         "current_year": datetime.now().year,
+        "maintainer_name": MAINTAINER_NAME,
+        "maintainer_email_user": MAINTAINER_EMAIL_USER,
+        "maintainer_email_domain": MAINTAINER_EMAIL_DOMAIN,
         "is_admin": is_admin_session(),
         "site_url": SITE_URL,
         "canonical_url": SITE_URL + path,
@@ -196,6 +204,12 @@ def inject_globals():
                 "addressCountry": "US",
             },
             "areaServed": "Los Angeles",
+            "contactPoint": {
+                "@type": "ContactPoint",
+                "contactType": "Website maintainer",
+                "name": MAINTAINER_NAME,
+                "url": SITE_URL + "/about",
+            },
         },
     }
 

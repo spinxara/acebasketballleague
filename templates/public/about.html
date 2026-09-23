@@ -78,6 +78,17 @@
     <p class="lead">A weekly commitment to basketball—and to the people we play it with.</p>
   </section>
 
+  <section class="card">
+    <h2>Contact</h2>
+    <p>
+      Maintainer: {{ maintainer_name }}(<span
+        class="email-address"
+        data-email-user="{{ maintainer_email_user }}"
+        data-email-domain="{{ maintainer_email_domain }}"
+      >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
+    </p>
+  </section>
+
   <section class="card" lang="ko">
     <h2>리그 소개</h2>
     <p>
@@ -110,5 +121,13 @@
       승리도 중요하지만, 팀워크와 성장, 그리고 일요일 아침에 다시 오게 하는 관계를 더 소중히 여깁니다.
     </p>
     <p>농구와, 함께 경기하는 사람들에게 매주 시간을 내는 리그입니다.</p>
+    <h3>문의</h3>
+    <p>
+      관리자: 노대영(<span
+        class="email-address"
+        data-email-user="{{ maintainer_email_user }}"
+        data-email-domain="{{ maintainer_email_domain }}"
+      >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
+    </p>
   </section>
 {% endblock %}

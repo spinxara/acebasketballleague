@@ -192,4 +192,4 @@ Team Moments also uses a public `team-moments` storage bucket. To create the tab
 
 ## Maintainer
 
-Dae Young Roh
+Dae Young Roh (spinxara@gmail.com)

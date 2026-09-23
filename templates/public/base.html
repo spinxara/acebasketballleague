@@ -18,6 +18,7 @@
   <meta name="twitter:title" content="{{ self.title() }}" />
   <meta name="twitter:description" content="{{ self.description() }}" />
   <meta name="twitter:image" content="{{ logo_url }}" />
+  <meta name="author" content="{{ maintainer_name }}" />
   <script type="application/ld+json">{{ organization_schema | tojson }}</script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
@@ -107,6 +108,13 @@
         and our team members
       </p>
     {% endif %}
+    <p class="footer-maintainer">
+      Maintainer: {{ maintainer_name }}(<span
+        class="email-address"
+        data-email-user="{{ maintainer_email_user }}"
+        data-email-domain="{{ maintainer_email_domain }}"
+      >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
+    </p>
     <span>ACE Basketball League &middot; {{ current_year }}</span>
     <div class="footer-links">
       <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer">YouTube</a>
@@ -152,6 +160,22 @@
 
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") closeAll();
+      });
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var targets = document.querySelectorAll(".email-address");
+      targets.forEach(function (target) {
+        var user = target.getAttribute("data-email-user");
+        var domain = target.getAttribute("data-email-domain");
+        if (!user || !domain) return;
+        var address = user + "@" + domain;
+        var link = document.createElement("a");
+        link.href = "mailto:" + address;
+        link.textContent = address;
+        target.replaceWith(link);
       });
     })();
   </script>

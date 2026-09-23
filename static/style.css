@@ -509,6 +509,11 @@ h3 {
   font-weight: bold;
 }
 
+.footer-maintainer {
+  flex-basis: 100%;
+  margin: 0 0 4px;
+}
+
 .footer-links {
   display: flex;
   gap: 16px;
