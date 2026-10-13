@@ -95,14 +95,44 @@ PUBLIC_NAV = [
 
 ADMIN_NAV = [
     {"id": "dashboard", "label": "Dashboard", "endpoint": "admin_dashboard"},
-    {"id": "draft", "label": "Draft Room", "endpoint": "admin_draft"},
-    {"id": "players", "label": "Players", "endpoint": "admin_players"},
-    {"id": "seasons", "label": "Seasons", "endpoint": "admin_seasons"},
-    {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
-    {"id": "games", "label": "Games", "endpoint": "admin_games"},
-    {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
-    {"id": "moments", "label": "Team Moments", "endpoint": "admin_moments"},
+    {
+        "id": "preseason",
+        "label": "Preseason",
+        "children": [
+            {"id": "players", "label": "Players", "endpoint": "admin_players"},
+            {"id": "seasons", "label": "Seasons", "endpoint": "admin_seasons"},
+            {"id": "draft", "label": "Draft Room", "endpoint": "admin_draft"},
+            {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
+        ],
+    },
+    {
+        "id": "season",
+        "label": "Season",
+        "children": [
+            {"id": "games", "label": "Games", "endpoint": "admin_games"},
+        ],
+    },
+    {
+        "id": "postseason",
+        "label": "Postseason",
+        "children": [
+            {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
+        ],
+    },
+    {
+        "id": "others",
+        "label": "Others",
+        "children": [
+            {"id": "moments", "label": "Team Moments", "endpoint": "admin_moments"},
+        ],
+    },
 ]
+
+ADMIN_DRAFT_NAV_ITEM = {
+    "id": "draft",
+    "label": "Draft Room",
+    "endpoint": "admin_draft",
+}
 
 
 def session_admin_role():
@@ -214,7 +244,7 @@ def inject_globals():
     logo_url = SITE_URL + url_for("static", filename="logo.png")
     admin_nav = ADMIN_NAV
     if is_captain_session():
-        admin_nav = [item for item in ADMIN_NAV if item["id"] == "draft"]
+        admin_nav = [ADMIN_DRAFT_NAV_ITEM]
     return {
         "public_nav": PUBLIC_NAV,
         "admin_nav": admin_nav,
@@ -691,6 +721,92 @@ def roster_form_error_message(exc):
     return message
 
 
+def normalize_team_member_row(row):
+    player = (row.get("player") or "").strip()
+    season = (row.get("season") or "").strip()
+    if not player or not season:
+        return None
+    season_team = (row.get("season_team") or "").strip()
+    player_id = str(row.get("player_id") or "").strip() or None
+    return {
+        "id": row.get("id"),
+        "season_team": season_team,
+        "player": player,
+        "player_id": player_id,
+        "season": season,
+        "season_year": row.get("season_year"),
+        "season_starting_month": row.get("season_starting_month"),
+        "created_at": row.get("created_at") or "",
+    }
+
+
+def load_team_members(season=None):
+    order = "season_team.asc,player.asc"
+    if season:
+        encoded = urllib.parse.quote(str(season), safe="")
+        payload = supabase_request(
+            f"team_members?select={TEAM_MEMBERS_COLUMNS}"
+            f"&season=eq.{encoded}&order={order}"
+        )
+        rows = parse_supabase_json(payload, empty=[])
+        if not isinstance(rows, list):
+            raise RuntimeError("Unexpected Supabase response.")
+    else:
+        rows = fetch_supabase_rows(
+            "team_members",
+            TEAM_MEMBERS_COLUMNS,
+            order=f"season_year.desc,season_starting_month.desc,{order}",
+        )
+
+    members = []
+    for row in rows:
+        normalized = normalize_team_member_row(row)
+        if normalized:
+            members.append(normalized)
+    return members
+
+
+def group_roster_by_team(rows):
+    groups = {team: [] for team in TEAM_NAMES}
+    other = {}
+    for row in rows:
+        team = (row.get("season_team") or "").strip()
+        if team in groups:
+            groups[team].append(row)
+        else:
+            label = team or "—"
+            other.setdefault(label, []).append(row)
+
+    ordered = [(team, groups[team]) for team in TEAM_NAMES]
+    for team in sorted(other.keys()):
+        ordered.append((team, other[team]))
+    return ordered
+
+
+def pick_default_roster_season(seasons, rostered_seasons):
+    if not seasons:
+        return ""
+    preferred = [
+        row for row in seasons
+        if (row.get("status") or "").strip().lower() in {"planned", "active"}
+    ]
+    for candidate in preferred + seasons:
+        label = candidate.get("season") or ""
+        if label and label in rostered_seasons:
+            return label
+    return seasons[0].get("season") or ""
+
+
+def team_member_season_fields(season_label):
+    quarter, year = parse_season_label(season_label)
+    if not quarter or year is None:
+        raise ValueError("Choose a valid season.")
+    starting_month = season_starting_month(quarter)
+    if starting_month is None:
+        raise ValueError("Choose a valid season.")
+    return year, starting_month
+
+
 SEASON_COLUMNS = (
     "season,status,season_start_date,season_end_date,season_winner,season_runnerup,"
     "tournament_date,tournament_winner,tournament_runnerup,mip_award,notes,"
@@ -708,6 +824,10 @@ TEAM_MATCHUP_COLUMNS = (
 )
 TEAM_MOMENTS_COLUMNS = "id,caption,storage_path,original_filename,created_at"
 PLAYERS_COLUMNS = "id,display_name,non_member,active,comments,created_at"
+TEAM_MEMBERS_COLUMNS = (
+    "id,season_team,player,player_id,season,season_year,"
+    "season_starting_month,created_at"
+)
 TEAM_MOMENTS_BUCKET = "team-moments"
 PLAYER_STATUS_FILTERS = ("all", "active", "inactive", "non_member")
 # Matches seasons_status_check in Supabase: planned | active | completed
@@ -902,7 +1022,7 @@ def update_supabase_row_by(table, column, value, patch):
 
 
 def delete_supabase_row(table, row_id):
-    delete_supabase_row_by(table, "id", row_id)
+    return delete_supabase_row_by(table, "id", row_id)
 
 
 def delete_supabase_row_by(table, column, value):
@@ -1969,13 +2089,204 @@ def admin_delete_season():
 
 @app.route("/admin/roster")
 def admin_roster():
+    load_error = None
+    seasons = []
+    members = []
+    available_players = []
+    season = (request.args.get("season") or "").strip()
+
+    try:
+        seasons = load_season_records()
+        known_seasons = {row["season"] for row in seasons}
+        if season and season not in known_seasons:
+            flash("That season is not in the seasons list.", "error")
+            season = ""
+
+        if not season:
+            all_members = load_team_members()
+            rostered_seasons = {row["season"] for row in all_members}
+            season = pick_default_roster_season(seasons, rostered_seasons)
+
+        if season:
+            members = load_team_members(season)
+            rostered_player_ids = {
+                row["player_id"] for row in members if row.get("player_id")
+            }
+            rostered_names = {
+                (row["player"] or "").strip().lower() for row in members
+            }
+            players = load_players()
+            available_players = [
+                player
+                for player in players
+                if player.get("id")
+                and player["id"] not in rostered_player_ids
+                and player["display_name"].strip().lower() not in rostered_names
+            ]
+    except RuntimeError as exc:
+        load_error = str(exc)
+
     return render_template(
-        "admin/in_progress.html",
+        "admin/roster.html",
         active="roster",
-        page_title="Roster",
-        page_summary="Assign players to NPS, KCN, and BK for a season.",
-        future_job="Create and list team_members rows: season team, player, season, year, and starting month.",
+        seasons=seasons,
+        season=season,
+        members=members,
+        roster_groups=group_roster_by_team(members),
+        team_names=TEAM_NAMES,
+        available_players=available_players,
+        load_error=load_error,
+        member_count=len(members),
     )
+
+
+@app.route("/admin/roster/update-team", methods=["POST"])
+def admin_roster_update_team():
+    season = (request.form.get("season") or "").strip()
+    member_id = (request.form.get("member_id") or "").strip()
+    season_team = (request.form.get("season_team") or "").strip().upper()
+
+    if not member_id:
+        flash("Roster member is required.", "error")
+        return redirect(url_for("admin_roster", season=season or None))
+    if season_team not in TEAM_NAMES:
+        flash("Team must be NPS, KCN, or BK.", "error")
+        return redirect(url_for("admin_roster", season=season or None))
+
+    try:
+        updated = update_supabase_row(
+            "team_members",
+            member_id,
+            {"season_team": season_team},
+        )
+        if not updated:
+            flash("That roster member could not be found.", "error")
+            return redirect(url_for("admin_roster", season=season or None))
+        player_name = (updated.get("player") or "Player").strip() or "Player"
+        flash(f"Moved {player_name} to {season_team}.", "success")
+    except RuntimeError as exc:
+        flash(roster_form_error_message(exc), "error")
+
+    return redirect(url_for("admin_roster", season=season or None))
+
+
+@app.route("/admin/roster/remove", methods=["POST"])
+def admin_roster_remove():
+    season = (request.form.get("season") or "").strip()
+    member_id = (request.form.get("member_id") or "").strip()
+
+    if not member_id:
+        flash("Roster member is required.", "error")
+        return redirect(url_for("admin_roster", season=season or None))
+
+    try:
+        deleted = delete_supabase_row("team_members", member_id)
+        player_name = ""
+        if isinstance(deleted, dict):
+            player_name = (deleted.get("player") or "").strip()
+        flash(
+            f"Removed {player_name or 'player'} from the roster.",
+            "success",
+        )
+    except RuntimeError as exc:
+        flash(roster_form_error_message(exc), "error")
+
+    return redirect(url_for("admin_roster", season=season or None))
+
+
+@app.route("/admin/roster/add", methods=["POST"])
+def admin_roster_add():
+    season = (request.form.get("season") or "").strip()
+    player_id = (request.form.get("player_id") or "").strip()
+    season_team = (request.form.get("season_team") or "").strip().upper()
+
+    if not season:
+        flash("Season is required.", "error")
+        return redirect(url_for("admin_roster"))
+    if season_team not in TEAM_NAMES:
+        flash("Team must be NPS, KCN, or BK.", "error")
+        return redirect(url_for("admin_roster", season=season))
+    if not player_id:
+        flash("Choose a player to add.", "error")
+        return redirect(url_for("admin_roster", season=season))
+
+    try:
+        UUID(str(player_id))
+    except ValueError:
+        flash("That player could not be found.", "error")
+        return redirect(url_for("admin_roster", season=season))
+
+    try:
+        known_seasons = {row["season"] for row in load_season_records()}
+        if season not in known_seasons:
+            flash("That season is not in the seasons list.", "error")
+            return redirect(url_for("admin_roster"))
+
+        players_by_id = {player["id"]: player for player in load_players()}
+        player = players_by_id.get(player_id)
+        if not player:
+            flash("That player could not be found.", "error")
+            return redirect(url_for("admin_roster", season=season))
+
+        existing = load_team_members(season)
+        if any(row.get("player_id") == player_id for row in existing):
+            flash(f"{player['display_name']} is already on this season roster.", "error")
+            return redirect(url_for("admin_roster", season=season))
+        if any(
+            (row.get("player") or "").strip().lower()
+            == player["display_name"].strip().lower()
+            for row in existing
+        ):
+            flash(f"{player['display_name']} is already on this season roster.", "error")
+            return redirect(url_for("admin_roster", season=season))
+
+        year, starting_month = team_member_season_fields(season)
+        insert_supabase_row(
+            "team_members",
+            {
+                "season_team": season_team,
+                "player": player["display_name"],
+                "player_id": player_id,
+                "season": season,
+                "season_year": year,
+                "season_starting_month": starting_month,
+            },
+        )
+        flash(f"Added {player['display_name']} to {season_team}.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    except RuntimeError as exc:
+        flash(roster_form_error_message(exc), "error")
+
+    return redirect(url_for("admin_roster", season=season))
+
+
+@app.route("/admin/roster/clear", methods=["POST"])
+def admin_roster_clear():
+    season = (request.form.get("season") or "").strip()
+    confirm_season = (request.form.get("confirm_season") or "").strip()
+
+    if not season:
+        flash("Season is required to clear the roster.", "error")
+        return redirect(url_for("admin_roster"))
+    if confirm_season != season:
+        flash("Clear cancelled. Type the season label exactly to confirm.", "error")
+        return redirect(url_for("admin_roster", season=season))
+
+    try:
+        if not team_members_exist_for_season(season):
+            flash(f"No roster rows to clear for {season}.", "success")
+            return redirect(url_for("admin_roster", season=season))
+
+        delete_supabase_row_by("team_members", "season", season)
+        flash(
+            f"Cleared the roster for {season}. Draft Room can save to this season again.",
+            "success",
+        )
+    except RuntimeError as exc:
+        flash(roster_form_error_message(exc), "error")
+
+    return redirect(url_for("admin_roster", season=season))
 
 
 @app.route("/admin/games")

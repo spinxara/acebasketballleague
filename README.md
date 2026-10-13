@@ -36,7 +36,8 @@ Live site: https://acebasketballteam.com
 - Team moments upload and delete (JPEG, PNG, WEBP, or GIF; 10MB max; optional 280-character caption).
 - Players page to list, add, and update league members and non-members (`active` / `non_member` / comments) in Supabase.
 - Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, and season page links.
-- Placeholder pages for dashboard, roster, games, and tournament (not wired yet). Roster remains season team assignment.
+- Roster page to view a season’s `team_members`, move players between NPS/KCN/BK, add/remove players, and clear a season roster (initial roster still comes from Draft Room).
+- Placeholder pages for dashboard, games, and tournament (not wired yet).
 
 Visiting `/draft` redirects to `/admin/draft`.
 
@@ -201,7 +202,7 @@ Public stats pages expect these tables (or views):
 - `team_matchup_strength`
 - `team_moments`
 - `players` (league members and non-members; draft pool = `active` and not `non_member`)
-- `team_members` (per-season roster; filled from Draft Room after a completed draft)
+- `team_members` (per-season roster; created from Draft Room, managed on Roster)
 
 Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
 
@@ -216,14 +217,12 @@ To add the league members table and link season rosters / stats:
 
 For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 
-For Draft Room “Save to roster” (writes to `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to insert roster rows.
-
-For Draft Room “Save to roster” (writes to `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to insert roster rows.
+For Draft Room “Save to roster” and Roster admin writes (insert/update/delete on `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to modify roster rows.
 
 ## Notes
 
 - The Render service must stay running for the public site and for Google to crawl it.
-- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Games, tournament, and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
+- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Use the **Roster** admin page afterward for mid-season trades, adds/removals, or clearing a season so Draft can save again. Games, tournament, and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
 
 ## Maintainer
 

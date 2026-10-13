@@ -1,0 +1,232 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Roster · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Roster</h2>
+    <p class="lead">View and adjust season team assignments in team_members.</p>
+    <p class="note">
+      Initial rosters come from Draft Room “Save to roster.” Use this page for mid-season
+      trades, adds, removals, or clearing a season so Draft can save again.
+    </p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="form-messages">
+          {% for category, message in messages %}
+            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% if seasons %}
+      <form class="upload-form roster-season-form" method="get" action="{{ url_for('admin_roster') }}">
+        <label for="season">Season</label>
+        <select id="season" name="season" required onchange="this.form.submit()">
+          {% for row in seasons %}
+            <option
+              value="{{ row.season }}"
+              {% if row.season == season %}selected{% endif %}
+            >
+              {{ row.season }}{% if row.status_label %} ({{ row.status_label }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <noscript>
+          <button class="login-submit" type="submit">View roster</button>
+        </noscript>
+      </form>
+    {% else %}
+      <p class="note">Add a season on the Seasons page before managing a roster.</p>
+    {% endif %}
+  </section>
+
+  {% if season %}
+    <section class="card">
+      <h3>{{ season }} roster</h3>
+
+      {% if load_error %}
+        <p class="error-note">Could not load roster. {{ load_error }}</p>
+      {% elif member_count == 0 %}
+        <p class="note">
+          No roster yet — complete Draft Room Save to roster, or add players below.
+        </p>
+      {% else %}
+        <p class="note">{{ member_count }} player{% if member_count != 1 %}s{% endif %} on this season.</p>
+        <div class="roster-teams-grid">
+          {% for team_name, team_members in roster_groups %}
+            <div class="roster-team-card">
+              <h4>{{ team_name }} <span class="roster-team-count">({{ team_members|length }})</span></h4>
+              {% if not team_members %}
+                <p class="note">No players.</p>
+              {% else %}
+                <ul class="roster-member-list">
+                  {% for member in team_members %}
+                    <li class="roster-member-row">
+                      <span class="roster-member-name">{{ member.player }}</span>
+                      <div class="roster-member-actions">
+                        <form
+                          class="roster-inline-form"
+                          method="post"
+                          action="{{ url_for('admin_roster_update_team') }}"
+                        >
+                          <input type="hidden" name="season" value="{{ season }}" />
+                          <input type="hidden" name="member_id" value="{{ member.id }}" />
+                          <label class="visually-hidden" for="team-{{ member.id }}">
+                            Team for {{ member.player }}
+                          </label>
+                          <select
+                            id="team-{{ member.id }}"
+                            name="season_team"
+                            required
+                          >
+                            {% for option in team_names %}
+                              <option
+                                value="{{ option }}"
+                                {% if option == member.season_team or (member.season_team not in team_names and loop.first) %}selected{% endif %}
+                              >
+                                {{ option }}
+                              </option>
+                            {% endfor %}
+                          </select>
+                          <button class="login-submit roster-small-btn" type="submit">Move</button>
+                        </form>
+                        <form
+                          class="roster-inline-form"
+                          method="post"
+                          action="{{ url_for('admin_roster_remove') }}"
+                          onsubmit="return confirm('Remove {{ member.player }} from {{ season }}?');"
+                        >
+                          <input type="hidden" name="season" value="{{ season }}" />
+                          <input type="hidden" name="member_id" value="{{ member.id }}" />
+                          <button class="danger-btn roster-small-btn" type="submit">Remove</button>
+                        </form>
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>Add player</h3>
+      <p class="note">Pick someone from the Players list who is not already on this season.</p>
+      {% if available_players %}
+        <form
+          class="upload-form roster-add-form"
+          method="post"
+          action="{{ url_for('admin_roster_add') }}"
+        >
+          <input type="hidden" name="season" value="{{ season }}" />
+          <div class="seasons-label-row">
+            <div>
+              <label for="player_id">Player</label>
+              <select id="player_id" name="player_id" required>
+                <option value="">Select a player</option>
+                {% for player in available_players %}
+                  <option value="{{ player.id }}">
+                    {{ player.display_name }}{% if player.non_member %} (NM){% endif %}{% if not player.active %} · inactive{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="add_season_team">Team</label>
+              <select id="add_season_team" name="season_team" required>
+                {% for option in team_names %}
+                  <option value="{{ option }}">{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <button class="login-submit" type="submit">Add to roster</button>
+        </form>
+      {% else %}
+        <p class="note">Every player is already on this season roster, or no players are loaded.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>Clear season roster</h3>
+      <p class="note">
+        Deletes all team_members for <strong>{{ season }}</strong> so Draft Room can save again.
+      </p>
+      <button
+        class="danger-btn"
+        type="button"
+        id="show-clear-roster"
+        aria-expanded="false"
+        aria-controls="clear-roster-confirm"
+      >
+        Clear {{ season }} roster…
+      </button>
+      <div
+        class="seasons-delete-confirm"
+        id="clear-roster-confirm"
+        hidden
+      >
+        <p class="seasons-delete-warning">
+          Permanently clear the roster for <strong>{{ season }}</strong>?
+          Type the season label exactly to confirm.
+        </p>
+        <form
+          class="seasons-delete-form"
+          method="post"
+          action="{{ url_for('admin_roster_clear') }}"
+        >
+          <input type="hidden" name="season" value="{{ season }}" />
+          <label for="confirm_season">Confirm season label</label>
+          <input
+            id="confirm_season"
+            name="confirm_season"
+            type="text"
+            required
+            autocomplete="off"
+            placeholder="{{ season }}"
+            data-expected-season="{{ season }}"
+          />
+          <div class="seasons-delete-actions">
+            <button class="danger-btn" type="submit">Confirm clear</button>
+            <button class="nav-link" type="button" id="cancel-clear-roster">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      var showBtn = document.getElementById("show-clear-roster");
+      var panel = document.getElementById("clear-roster-confirm");
+      var cancelBtn = document.getElementById("cancel-clear-roster");
+      var confirmInput = panel && panel.querySelector("[data-expected-season]");
+      if (!showBtn || !panel || !confirmInput) return;
+
+      function setOpen(open) {
+        panel.hidden = !open;
+        showBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+          confirmInput.value = "";
+          confirmInput.focus();
+        }
+      }
+
+      showBtn.addEventListener("click", function () {
+        setOpen(true);
+      });
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          setOpen(false);
+        });
+      }
+    })();
+  </script>
+{% endblock %}
