@@ -1,0 +1,372 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Seasons · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Seasons</h2>
+    <p class="lead">Add seasons and update status, dates, winners, MIP, notes, and season page links.</p>
+    <p class="note">Team setup (NPS / KCN / BK roster) stays on Roster for now.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="form-messages">
+          {% for category, message in messages %}
+            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form
+      class="upload-form seasons-form"
+      method="post"
+      action="{{ url_for('admin_seasons', status=status) }}"
+    >
+      <div class="seasons-label-row">
+        <div>
+          <label for="season_quarter">Quarter</label>
+          <select id="season_quarter" name="season_quarter" required>
+            {% for quarter in season_quarters %}
+              <option value="{{ quarter }}">{{ quarter }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="season_year">Year</label>
+          <input
+            id="season_year"
+            name="season_year"
+            type="number"
+            min="2000"
+            max="2100"
+            step="1"
+            required
+            value="{{ default_year }}"
+          />
+        </div>
+        <div>
+          <label for="status">Status</label>
+          <select id="status" name="status" required>
+            {% for option in season_statuses %}
+              <option value="{{ option }}"{% if option == "planned" %} selected{% endif %}>
+                {{ option|capitalize }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="seasons-label-row">
+        <div>
+          <label for="season_start_date">Season start</label>
+          <input id="season_start_date" name="season_start_date" type="date" />
+        </div>
+        <div>
+          <label for="season_end_date">Season end</label>
+          <input id="season_end_date" name="season_end_date" type="date" />
+        </div>
+        <div>
+          <label for="tournament_date">Tournament date</label>
+          <input id="tournament_date" name="tournament_date" type="date" />
+        </div>
+      </div>
+
+      <div class="seasons-label-row">
+        <div>
+          <label for="season_winner">Season winner</label>
+          <input id="season_winner" name="season_winner" type="text" maxlength="40" placeholder="BK" />
+        </div>
+        <div>
+          <label for="season_runnerup">Season runner-up</label>
+          <input id="season_runnerup" name="season_runnerup" type="text" maxlength="40" placeholder="KCN" />
+        </div>
+        <div>
+          <label for="tournament_winner">Tournament winner</label>
+          <input id="tournament_winner" name="tournament_winner" type="text" maxlength="40" />
+        </div>
+        <div>
+          <label for="tournament_runnerup">Tournament runner-up</label>
+          <input id="tournament_runnerup" name="tournament_runnerup" type="text" maxlength="40" />
+        </div>
+      </div>
+
+      <label for="mip_award">MIP award</label>
+      <input id="mip_award" name="mip_award" type="text" maxlength="120" placeholder="Player name" />
+
+      <label for="season_page">Season page URL</label>
+      <input
+        id="season_page"
+        name="season_page"
+        type="url"
+        maxlength="500"
+        placeholder="https://..."
+      />
+
+      <label for="notes">Notes</label>
+      <input id="notes" name="notes" type="text" maxlength="500" placeholder="Optional notes" />
+
+      <button class="login-submit" type="submit">Add season</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h3>Season list</h3>
+
+    <nav class="players-filters" aria-label="Filter seasons">
+      {% for filter_id in status_filters %}
+        <a
+          class="players-filter{{ ' active' if status == filter_id else '' }}"
+          href="{{ url_for('admin_seasons', status=filter_id) }}"
+        >
+          {{ filter_id|capitalize }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    {% if load_error %}
+      <p class="error-note">Could not load seasons. {{ load_error }}</p>
+    {% elif not seasons %}
+      <p class="note">No seasons match this filter.</p>
+    {% else %}
+      {% for row in seasons %}
+        <form
+          id="delete-season-{{ loop.index }}"
+          method="post"
+          action="{{ url_for('admin_delete_season', status=status) }}"
+        >
+          <input type="hidden" name="status" value="{{ status }}" />
+          <input type="hidden" name="season" value="{{ row.season }}" />
+        </form>
+      {% endfor %}
+
+      <form
+        class="seasons-bulk-form"
+        method="post"
+        action="{{ url_for('admin_bulk_update_seasons', status=status) }}"
+      >
+        <input type="hidden" name="status" value="{{ status }}" />
+        <div class="players-bulk-actions">
+          <p class="note">{{ seasons | length }} season{% if seasons | length != 1 %}s{% endif %}.</p>
+          <button class="login-submit" type="submit">Save all changes</button>
+        </div>
+
+        {% for row in seasons %}
+          <fieldset class="seasons-edit-card" data-season-card>
+            <legend class="seasons-edit-legend">
+              <span class="seasons-edit-title">
+                {{ row.season }}
+                <span class="status-pill {{ row.status_class }}">{{ row.status_label or "—" }}</span>
+              </span>
+              <button
+                class="danger-btn"
+                type="button"
+                data-show-delete
+                aria-expanded="false"
+                aria-controls="delete-confirm-{{ loop.index }}"
+              >
+                Delete
+              </button>
+            </legend>
+            <input type="hidden" name="season_key" value="{{ row.season }}" />
+
+            <div class="seasons-edit-grid">
+              <div>
+                <label for="status-{{ loop.index }}">Status</label>
+                <select id="status-{{ loop.index }}" name="status[{{ row.season }}]" required>
+                  {% for option in season_statuses %}
+                    <option value="{{ option }}"{% if row.status == option %} selected{% endif %}>
+                      {{ option|capitalize }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="season_start_date-{{ loop.index }}">Season start</label>
+                <input
+                  id="season_start_date-{{ loop.index }}"
+                  name="season_start_date[{{ row.season }}]"
+                  type="date"
+                  value="{{ row.season_start_date }}"
+                />
+              </div>
+              <div>
+                <label for="season_end_date-{{ loop.index }}">Season end</label>
+                <input
+                  id="season_end_date-{{ loop.index }}"
+                  name="season_end_date[{{ row.season }}]"
+                  type="date"
+                  value="{{ row.season_end_date }}"
+                />
+              </div>
+              <div>
+                <label for="tournament_date-{{ loop.index }}">Tournament date</label>
+                <input
+                  id="tournament_date-{{ loop.index }}"
+                  name="tournament_date[{{ row.season }}]"
+                  type="date"
+                  value="{{ row.tournament_date }}"
+                />
+              </div>
+              <div>
+                <label for="season_winner-{{ loop.index }}">Season winner</label>
+                <input
+                  id="season_winner-{{ loop.index }}"
+                  name="season_winner[{{ row.season }}]"
+                  type="text"
+                  maxlength="40"
+                  value="{{ row.season_winner }}"
+                />
+              </div>
+              <div>
+                <label for="season_runnerup-{{ loop.index }}">Season runner-up</label>
+                <input
+                  id="season_runnerup-{{ loop.index }}"
+                  name="season_runnerup[{{ row.season }}]"
+                  type="text"
+                  maxlength="40"
+                  value="{{ row.season_runnerup }}"
+                />
+              </div>
+              <div>
+                <label for="tournament_winner-{{ loop.index }}">Tournament winner</label>
+                <input
+                  id="tournament_winner-{{ loop.index }}"
+                  name="tournament_winner[{{ row.season }}]"
+                  type="text"
+                  maxlength="40"
+                  value="{{ row.tournament_winner }}"
+                />
+              </div>
+              <div>
+                <label for="tournament_runnerup-{{ loop.index }}">Tournament runner-up</label>
+                <input
+                  id="tournament_runnerup-{{ loop.index }}"
+                  name="tournament_runnerup[{{ row.season }}]"
+                  type="text"
+                  maxlength="40"
+                  value="{{ row.tournament_runnerup }}"
+                />
+              </div>
+              <div class="seasons-span-2">
+                <label for="mip_award-{{ loop.index }}">MIP award</label>
+                <input
+                  id="mip_award-{{ loop.index }}"
+                  name="mip_award[{{ row.season }}]"
+                  type="text"
+                  maxlength="120"
+                  value="{{ row.mip_award }}"
+                />
+              </div>
+              <div class="seasons-span-2">
+                <label for="season_page-{{ loop.index }}">Season page URL</label>
+                <input
+                  id="season_page-{{ loop.index }}"
+                  name="season_page[{{ row.season }}]"
+                  type="url"
+                  maxlength="500"
+                  value="{{ row.season_page }}"
+                />
+              </div>
+              <div class="seasons-span-2">
+                <label for="notes-{{ loop.index }}">Notes</label>
+                <input
+                  id="notes-{{ loop.index }}"
+                  name="notes[{{ row.season }}]"
+                  type="text"
+                  maxlength="500"
+                  value="{{ row.notes }}"
+                />
+              </div>
+            </div>
+
+            <div
+              class="seasons-delete-confirm"
+              id="delete-confirm-{{ loop.index }}"
+              hidden
+              data-delete-confirm
+            >
+              <p class="seasons-delete-warning">
+                Permanently delete <strong>{{ row.season }}</strong>?
+                Type the season label exactly to confirm.
+              </p>
+              <div class="seasons-delete-form">
+                <label for="confirm-season-{{ loop.index }}">Confirm season label</label>
+                <input
+                  id="confirm-season-{{ loop.index }}"
+                  form="delete-season-{{ loop.index }}"
+                  name="confirm_season"
+                  type="text"
+                  required
+                  autocomplete="off"
+                  placeholder="{{ row.season }}"
+                  data-expected-season="{{ row.season }}"
+                />
+                <div class="seasons-delete-actions">
+                  <button
+                    class="danger-btn"
+                    type="submit"
+                    form="delete-season-{{ loop.index }}"
+                  >
+                    Confirm delete
+                  </button>
+                  <button class="nav-link" type="button" data-cancel-delete>Cancel</button>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+        {% endfor %}
+
+        <div class="players-bulk-actions players-bulk-actions-bottom">
+          <button class="login-submit" type="submit">Save all changes</button>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    document.querySelectorAll("[data-season-card]").forEach(function (card) {
+      var showBtn = card.querySelector("[data-show-delete]");
+      var panel = card.querySelector("[data-delete-confirm]");
+      var cancelBtn = card.querySelector("[data-cancel-delete]");
+      var confirmInput = card.querySelector("[data-expected-season]");
+      var formId = showBtn && showBtn.getAttribute("aria-controls");
+      var deleteForm = formId
+        ? document.getElementById(formId.replace("delete-confirm-", "delete-season-"))
+        : null;
+
+      if (!showBtn || !panel || !confirmInput || !deleteForm) return;
+
+      function setOpen(open) {
+        panel.hidden = !open;
+        showBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+          confirmInput.value = "";
+          confirmInput.focus();
+        }
+      }
+
+      showBtn.addEventListener("click", function () {
+        setOpen(panel.hidden);
+      });
+
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          setOpen(false);
+        });
+      }
+
+      deleteForm.addEventListener("submit", function (event) {
+        var expected = confirmInput.getAttribute("data-expected-season") || "";
+        if (confirmInput.value.trim() !== expected) {
+          event.preventDefault();
+          alert("Delete cancelled. Type the season label exactly: " + expected);
+          setOpen(true);
+          confirmInput.focus();
+        }
+      });
+    });
+  </script>
+{% endblock %}

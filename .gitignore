@@ -4,5 +4,6 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+team_members.csv
 seed_picking.py
 seed_picking_server.py

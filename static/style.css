@@ -940,6 +940,21 @@ h3 {
   margin: 0;
 }
 
+.draft-room .player-btn-name {
+  display: block;
+}
+
+.draft-room .player-btn-comment,
+.draft-room .player-comment {
+  color: var(--admin-muted);
+}
+
+.draft-room .player-btn-comment {
+  display: block;
+  font-size: 0.85em;
+  margin-top: 2px;
+}
+
 .draft-room .player-btn:hover:not(:disabled) {
   background: #164e63;
 }
@@ -1142,7 +1157,11 @@ h3 {
 }
 
 .upload-form input[type="file"],
-.upload-form input[type="text"] {
+.upload-form input[type="text"],
+.upload-form input[type="url"],
+.upload-form input[type="number"],
+.upload-form input[type="date"],
+.upload-form select {
   padding: 10px 12px;
   border: 1px solid var(--admin-line);
   border-radius: 8px;
@@ -1152,9 +1171,226 @@ h3 {
 }
 
 .upload-form input[type="text"]:focus,
-.upload-form input[type="file"]:focus {
+.upload-form input[type="url"]:focus,
+.upload-form input[type="number"]:focus,
+.upload-form input[type="date"]:focus,
+.upload-form input[type="file"]:focus,
+.upload-form select:focus {
   outline: 2px solid var(--admin-accent);
   outline-offset: 1px;
+}
+
+.seasons-form {
+  max-width: 920px;
+}
+
+.seasons-label-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.seasons-label-row > div {
+  display: grid;
+  gap: 8px;
+}
+
+.seasons-edit-card {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.seasons-edit-card legend.seasons-edit-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: calc(100% - 12px);
+  padding: 0 6px;
+  color: var(--admin-text);
+  font-weight: bold;
+}
+
+.seasons-edit-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.seasons-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.seasons-edit-grid label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--admin-muted);
+}
+
+.seasons-edit-grid input,
+.seasons-edit-grid select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #111827;
+  color: var(--admin-text);
+  font-size: 14px;
+}
+
+.seasons-edit-grid input:focus,
+.seasons-edit-grid select:focus {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 1px;
+}
+
+.seasons-span-2 {
+  grid-column: 1 / -1;
+}
+
+.seasons-delete-confirm {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  background: #1c1010;
+}
+
+.seasons-delete-warning {
+  margin: 0 0 12px;
+  color: #fecaca;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.seasons-delete-form {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.seasons-delete-form label {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--admin-muted);
+}
+
+.seasons-delete-form input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #111827;
+  color: var(--admin-text);
+  font-size: 14px;
+}
+
+.seasons-delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.players-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.players-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.players-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.players-filter {
+  padding: 6px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  color: var(--admin-muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.players-filter.active,
+.players-filter:hover {
+  background: var(--admin-accent);
+  border-color: var(--admin-accent);
+  color: #082f49;
+}
+
+.players-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.players-table th,
+.players-table td {
+  border: 1px solid var(--admin-line);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.players-table th {
+  background: #0f172a;
+  color: var(--admin-text);
+}
+
+.players-name-input,
+.players-comments-input {
+  width: 100%;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #0f172a;
+  color: var(--admin-text);
+  font-size: 14px;
+}
+
+.players-name-input:focus,
+.players-comments-input:focus {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 1px;
+}
+
+.players-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+
+.players-bulk-actions-bottom {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 
 .admin-body .moment-card {

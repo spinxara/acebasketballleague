@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from io import BytesIO
 from threading import Lock
@@ -95,6 +95,8 @@ PUBLIC_NAV = [
 ADMIN_NAV = [
     {"id": "dashboard", "label": "Dashboard", "endpoint": "admin_dashboard"},
     {"id": "draft", "label": "Draft Room", "endpoint": "admin_draft"},
+    {"id": "players", "label": "Players", "endpoint": "admin_players"},
+    {"id": "seasons", "label": "Seasons", "endpoint": "admin_seasons"},
     {"id": "roster", "label": "Roster", "endpoint": "admin_roster"},
     {"id": "games", "label": "Games", "endpoint": "admin_games"},
     {"id": "tournament", "label": "Tournament", "endpoint": "admin_tournament"},
@@ -251,32 +253,8 @@ default_season_results = {
     "BK": {"wins": 25, "losses": 11}
 }
 
-ALL_PLAYERS = [
-    "Alex Hahn",
-    "Allen 기준 Lee",
-    "Boum Soo Kim",
-    "Brian 병훈 Paek",
-    "Clan Hahn",
-    "Dae Young Roh",
-    "David 민형 Jin",
-    "Donggyu Lee",
-    "Dongjun Min",
-    "Edward 에디 Kim",
-    "Eric 형승 Lim",
-    "Johann Lee",
-    "Mike Hong",
-    "Min Hun 민훈 Paik",
-    "Minwoo Cho",
-    "Peter 석현 Yeon",
-    "Quinn 규현 Chung",
-    "Sangmin Moon",
-    "Shawn White",
-    "Tenzing Sherpa",
-    "Tong Young Ko"
-]
-
 SEED_LABELS = [1, 2, 3]
-TEAM_SIZE = 7
+DRAFT_TEAM_COUNT = 3
 
 shared_state = {
     "is_running": False,
@@ -290,7 +268,8 @@ shared_state = {
         "completed": False,
         "captains": {},
         "teams": {"1": [], "2": [], "3": []},
-        "available_players": ALL_PLAYERS[:],
+        "player_pool": [],
+        "available_players": [],
         "pick_sequence": [],
         "current_pick_index": 0,
         "current_seed": None,
@@ -485,37 +464,84 @@ def build_result_payload():
     return payload
 
 
-def build_pick_sequence(team_count, rounds):
+def build_pick_sequence(team_count, pick_count):
+    if pick_count <= 0:
+        return []
+
     sequence = []
     forward = list(range(1, team_count + 1))
     backward = list(range(team_count, 0, -1))
+    round_number = 0
 
-    for round_number in range(rounds):
+    while len(sequence) < pick_count:
         sequence.extend(forward if round_number % 2 == 0 else backward)
+        round_number += 1
 
-    return sequence
+    return sequence[:pick_count]
 
 
-def reset_draft_state(message="Draft reset."):
+def draft_idle_message(pool):
+    if not pool:
+        return "No active players. Mark league members active on the Players page first."
+    if len(pool) < DRAFT_TEAM_COUNT:
+        return f"Need at least {DRAFT_TEAM_COUNT} active players to draft. Currently {len(pool)}."
+    return "Select 3 captains and start the draft."
+
+
+def draft_player_label(player):
+    name = (player.get("display_name") or "").strip()
+    comments = (player.get("comments") or "").strip()
+    if comments:
+        return f"{name} — {comments}"
+    return name
+
+
+def find_draft_player(players, player_id):
+    player_id = (player_id or "").strip()
+    if not player_id:
+        return None
+    for player in players or []:
+        if player.get("id") == player_id:
+            return player
+    return None
+
+
+def reset_draft_state(message=None):
+    pool = load_draft_players()
     shared_state["draft"] = {
         "started": False,
         "completed": False,
         "captains": {},
         "teams": {"1": [], "2": [], "3": []},
-        "available_players": ALL_PLAYERS[:],
+        "player_pool": pool[:],
+        "available_players": pool[:],
         "pick_sequence": [],
         "current_pick_index": 0,
         "current_seed": None,
         "last_pick": None,
-        "message": message
+        "message": message if message is not None else draft_idle_message(pool),
     }
+
+
+def refresh_draft_pool_if_idle():
+    draft = shared_state["draft"]
+    if draft.get("started"):
+        return
+    pool = load_draft_players()
+    draft["player_pool"] = pool[:]
+    draft["available_players"] = pool[:]
+    draft["message"] = draft_idle_message(pool)
 
 
 def emit_draft_state():
     socketio.emit("draft_state", shared_state["draft"])
 
 
-SEASON_COLUMNS = "season,status,season_winner,tournament_winner,mip_award,season_page,notes"
+SEASON_COLUMNS = (
+    "season,status,season_start_date,season_end_date,season_winner,season_runnerup,"
+    "tournament_date,tournament_winner,tournament_runnerup,mip_award,notes,"
+    "created_at,updated_at,season_page"
+)
 MEMBER_STATS_COLUMNS = (
     "player,total_games,total_wins,total_win_rates,total_seasons,"
     "season_titles,season_runnerups,tournament_titles,tournament_runnerups"
@@ -527,7 +553,13 @@ TEAM_MATCHUP_COLUMNS = (
     "season,team,comp_team,total_games,wins_by_team,team_win_rate,team_members"
 )
 TEAM_MOMENTS_COLUMNS = "id,caption,storage_path,original_filename,created_at"
+PLAYERS_COLUMNS = "id,display_name,non_member,active,comments,created_at"
 TEAM_MOMENTS_BUCKET = "team-moments"
+PLAYER_STATUS_FILTERS = ("all", "active", "inactive", "non_member")
+# Matches seasons_status_check in Supabase: planned | active | completed
+SEASON_STATUSES = ("planned", "active", "completed")
+SEASON_STATUS_FILTERS = ("all",) + SEASON_STATUSES
+SEASON_QUARTERS = ("Jan-Mar", "Apr-Jun", "Jul-Sep", "Oct-Dec")
 MAX_MOMENT_BYTES = 10 * 1024 * 1024
 MAX_MOMENT_EDGE = 1920
 MAX_MOMENT_CAPTION = 280
@@ -581,7 +613,20 @@ def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
         if exc.code == 404:
             if "team_moments" in body:
                 raise RuntimeError("The Team Moments table is not set up yet.") from exc
+            if "players" in body:
+                raise RuntimeError("The players table is not set up yet.") from exc
+            if "seasons" in body:
+                raise RuntimeError("The seasons table is not set up yet.") from exc
             raise RuntimeError("Supabase table or file was not found.") from exc
+        detail = ""
+        try:
+            parsed = json.loads(body) if body else {}
+            if isinstance(parsed, dict):
+                detail = (parsed.get("message") or parsed.get("error") or "").strip()
+        except json.JSONDecodeError:
+            detail = (body or "").strip()[:240]
+        if detail:
+            raise RuntimeError(f"Supabase request failed ({exc.code}): {detail}") from exc
         raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError("Could not reach Supabase.") from exc
@@ -656,9 +701,49 @@ def insert_supabase_row(table, row):
     raise RuntimeError("Unexpected Supabase response.")
 
 
+def update_supabase_row(table, row_id, patch):
+    return update_supabase_row_by(table, "id", row_id, patch)
+
+
+def update_supabase_row_by(table, column, value, patch):
+    encoded_column = urllib.parse.quote(str(column), safe="")
+    encoded_value = urllib.parse.quote(str(value), safe="")
+    payload = supabase_request(
+        f"{table}?{encoded_column}=eq.{encoded_value}",
+        method="PATCH",
+        body=patch,
+        extra_headers={"Prefer": "return=representation"},
+    )
+    data = parse_supabase_json(payload, empty=[])
+    if isinstance(data, list) and data:
+        return data[0]
+    if isinstance(data, dict):
+        return data
+    raise RuntimeError(
+        "No matching row was updated. Check Supabase RLS write policies for this table."
+    )
+
+
 def delete_supabase_row(table, row_id):
-    encoded = urllib.parse.quote(str(row_id), safe="")
-    supabase_request(f"{table}?id=eq.{encoded}", method="DELETE")
+    delete_supabase_row_by(table, "id", row_id)
+
+
+def delete_supabase_row_by(table, column, value):
+    encoded_column = urllib.parse.quote(str(column), safe="")
+    encoded_value = urllib.parse.quote(str(value), safe="")
+    payload = supabase_request(
+        f"{table}?{encoded_column}=eq.{encoded_value}",
+        method="DELETE",
+        extra_headers={"Prefer": "return=representation"},
+    )
+    data = parse_supabase_json(payload, empty=[])
+    if isinstance(data, list) and data:
+        return data[0]
+    if isinstance(data, dict):
+        return data
+    raise RuntimeError(
+        "No matching row was deleted. Check Supabase RLS write policies for this table."
+    )
 
 
 def storage_object_url(storage_path):
@@ -723,11 +808,25 @@ def season_sort_key(row):
 
 def season_status_class(status):
     value = (status or "").strip().lower()
-    if "complete" in value or value in {"done", "finished"}:
+    if value == "completed" or "complete" in value or value in {"done", "finished"}:
         return "status-complete"
-    if any(token in value for token in ("progress", "active", "current", "ongoing")):
+    if value == "active" or any(
+        token in value for token in ("progress", "current", "ongoing")
+    ):
         return "status-active"
+    if value in {"planned", "upcoming"}:
+        return "status-neutral"
     return "status-neutral"
+
+
+def normalize_season_status(value):
+    status = (value or "").strip().lower()
+    # Accept older UI wording; DB check constraint uses planned.
+    if status == "upcoming":
+        status = "planned"
+    if status not in SEASON_STATUSES:
+        raise ValueError("Status must be planned, active, or completed.")
+    return status
 
 
 def season_page_url(value):
@@ -739,22 +838,220 @@ def season_page_url(value):
     return ""
 
 
+def parse_optional_date(value, field_label):
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{field_label} must be a valid date.") from exc
+
+
+def parse_optional_text(value):
+    text = (value or "").strip()
+    return text or None
+
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def compose_season_label(quarter, year):
+    quarter = (quarter or "").strip()
+    year_text = (year or "").strip()
+    if quarter not in SEASON_QUARTERS:
+        raise ValueError("Choose a valid season quarter.")
+    try:
+        year_value = int(year_text)
+    except ValueError as exc:
+        raise ValueError("Season year must be a 4-digit year.") from exc
+    if year_value < 2000 or year_value > 2100:
+        raise ValueError("Season year must be between 2000 and 2100.")
+    return f"{quarter} {year_value}"
+
+
 def load_season_records():
     rows = fetch_supabase_rows("seasons", SEASON_COLUMNS)
     rows.sort(key=season_sort_key)
-    return [
-        {
-            "season": row.get("season") or "",
-            "status": row.get("status") or "",
-            "season_winner": row.get("season_winner") or "",
-            "tournament_winner": row.get("tournament_winner") or "",
-            "mip_award": row.get("mip_award") or "",
-            "season_page": season_page_url(row.get("season_page")),
+    seasons = []
+    for row in rows:
+        season = (row.get("season") or "").strip()
+        if not season:
+            continue
+        status = (row.get("status") or "").strip().lower()
+        seasons.append({
+            "season": season,
+            "status": status,
+            "status_label": status.title() if status else "",
+            "season_start_date": (row.get("season_start_date") or "")[:10],
+            "season_end_date": (row.get("season_end_date") or "")[:10],
+            "season_winner": (row.get("season_winner") or "").strip(),
+            "season_runnerup": (row.get("season_runnerup") or "").strip(),
+            "tournament_date": (row.get("tournament_date") or "")[:10],
+            "tournament_winner": (row.get("tournament_winner") or "").strip(),
+            "tournament_runnerup": (row.get("tournament_runnerup") or "").strip(),
+            "mip_award": (row.get("mip_award") or "").strip(),
             "notes": (row.get("notes") or "").strip(),
-            "status_class": season_status_class(row.get("status")),
-        }
-        for row in rows
-    ]
+            "season_page": (row.get("season_page") or "").strip(),
+            "season_page_url": season_page_url(row.get("season_page")),
+            "status_class": season_status_class(status),
+        })
+    return seasons
+
+
+def filter_seasons(seasons, status):
+    if status in SEASON_STATUSES:
+        return [row for row in seasons if row["status"] == status]
+    return seasons
+
+
+def season_payload_from_values(
+    status,
+    season_start_date,
+    season_end_date,
+    season_winner,
+    season_runnerup,
+    tournament_date,
+    tournament_winner,
+    tournament_runnerup,
+    mip_award,
+    notes,
+    season_page,
+):
+    return {
+        "status": status,
+        "season_start_date": season_start_date,
+        "season_end_date": season_end_date,
+        "season_winner": season_winner,
+        "season_runnerup": season_runnerup,
+        "tournament_date": tournament_date,
+        "tournament_winner": tournament_winner,
+        "tournament_runnerup": tournament_runnerup,
+        "mip_award": mip_award,
+        "notes": notes,
+        "season_page": season_page,
+    }
+
+
+def parse_season_fields(form, prefix=""):
+    if prefix:
+        status = normalize_season_status(form.get(f"status[{prefix}]"))
+        season_start_date = parse_optional_date(
+            form.get(f"season_start_date[{prefix}]"), "Season start date"
+        )
+        season_end_date = parse_optional_date(
+            form.get(f"season_end_date[{prefix}]"), "Season end date"
+        )
+        tournament_date = parse_optional_date(
+            form.get(f"tournament_date[{prefix}]"), "Tournament date"
+        )
+        season_winner = parse_optional_text(form.get(f"season_winner[{prefix}]"))
+        season_runnerup = parse_optional_text(form.get(f"season_runnerup[{prefix}]"))
+        tournament_winner = parse_optional_text(form.get(f"tournament_winner[{prefix}]"))
+        tournament_runnerup = parse_optional_text(
+            form.get(f"tournament_runnerup[{prefix}]")
+        )
+        mip_award = parse_optional_text(form.get(f"mip_award[{prefix}]"))
+        notes = parse_optional_text(form.get(f"notes[{prefix}]"))
+        season_page = parse_optional_text(form.get(f"season_page[{prefix}]"))
+    else:
+        status = normalize_season_status(form.get("status"))
+        season_start_date = parse_optional_date(
+            form.get("season_start_date"), "Season start date"
+        )
+        season_end_date = parse_optional_date(
+            form.get("season_end_date"), "Season end date"
+        )
+        tournament_date = parse_optional_date(
+            form.get("tournament_date"), "Tournament date"
+        )
+        season_winner = parse_optional_text(form.get("season_winner"))
+        season_runnerup = parse_optional_text(form.get("season_runnerup"))
+        tournament_winner = parse_optional_text(form.get("tournament_winner"))
+        tournament_runnerup = parse_optional_text(form.get("tournament_runnerup"))
+        mip_award = parse_optional_text(form.get("mip_award"))
+        notes = parse_optional_text(form.get("notes"))
+        season_page = parse_optional_text(form.get("season_page"))
+
+    return season_payload_from_values(
+        status,
+        season_start_date,
+        season_end_date,
+        season_winner,
+        season_runnerup,
+        tournament_date,
+        tournament_winner,
+        tournament_runnerup,
+        mip_award,
+        notes,
+        season_page,
+    )
+
+
+def parse_new_season_form(form):
+    season = compose_season_label(form.get("season_quarter"), form.get("season_year"))
+    payload = parse_season_fields(form)
+    now = utc_now_iso()
+    payload["season"] = season
+    payload["created_at"] = now
+    payload["updated_at"] = now
+    return payload
+
+
+def parse_bulk_season_rows(form):
+    rows = []
+    for season in form.getlist("season_key"):
+        season = (season or "").strip()
+        if not season:
+            continue
+        quarter, year = parse_season_label(season)
+        if not quarter or year is None:
+            raise ValueError("One of the season labels is invalid.")
+        payload = parse_season_fields(form, prefix=season)
+        payload["season"] = season
+        payload["updated_at"] = utc_now_iso()
+        rows.append(payload)
+    return rows
+
+
+def season_form_error_message(exc):
+    message = str(exc)
+    if "(409)" in message:
+        return "A season with that label already exists."
+    if "seasons_status_check" in message:
+        return "Status must be planned, active, or completed."
+    if "RLS write policies" in message:
+        return (
+            "Supabase blocked the write. Run supabase/seasons_admin_policies.sql "
+            "in the SQL editor, then try again."
+        )
+    if "seasons" in message.lower() and "not found" in message.lower():
+        return "The seasons table is not set up yet."
+    return message
+
+
+def season_row_changed(current, payload):
+    def norm_text(value):
+        return (value or "").strip() or None
+
+    def norm_date(value):
+        text = (value or "").strip()
+        return text[:10] if text else None
+
+    return (
+        current["status"] != payload["status"]
+        or norm_date(current["season_start_date"]) != payload["season_start_date"]
+        or norm_date(current["season_end_date"]) != payload["season_end_date"]
+        or norm_text(current["season_winner"]) != payload["season_winner"]
+        or norm_text(current["season_runnerup"]) != payload["season_runnerup"]
+        or norm_date(current["tournament_date"]) != payload["tournament_date"]
+        or norm_text(current["tournament_winner"]) != payload["tournament_winner"]
+        or norm_text(current["tournament_runnerup"]) != payload["tournament_runnerup"]
+        or norm_text(current["mip_award"]) != payload["mip_award"]
+        or norm_text(current["notes"]) != payload["notes"]
+        or norm_text(current["season_page"]) != payload["season_page"]
+    )
 
 
 def stat_count(value):
@@ -946,6 +1243,98 @@ def prepare_moment_image(file_storage):
             return output.getvalue(), "image/gif", ".gif"
     except (UnidentifiedImageError, OSError) as exc:
         raise ValueError(f"{filename} is not a valid image.") from exc
+
+
+def load_players():
+    rows = fetch_supabase_rows(
+        "players",
+        PLAYERS_COLUMNS,
+        order="display_name.asc",
+    )
+    players = []
+    for row in rows:
+        display_name = (row.get("display_name") or "").strip()
+        if not display_name:
+            continue
+        comments = (row.get("comments") or "").strip()
+        players.append({
+            "id": row.get("id") or "",
+            "display_name": display_name,
+            "non_member": bool(row.get("non_member")),
+            "active": bool(row.get("active")),
+            "comments": comments,
+        })
+    return players
+
+
+def load_draft_players():
+    """Active league members (non_member = false) for the draft pool."""
+    try:
+        players = load_players()
+    except Exception:
+        return []
+    return [
+        {
+            "id": player["id"],
+            "display_name": player["display_name"],
+            "comments": player.get("comments") or "",
+        }
+        for player in players
+        if player["active"] and not player["non_member"] and player.get("id")
+    ]
+
+
+def parse_player_form(form):
+    display_name = (form.get("display_name") or "").strip()
+    non_member = form.get("non_member") in ("on", "1", "true")
+    active = form.get("active") in ("on", "1", "true")
+    comments = (form.get("comments") or "").strip() or None
+    return display_name, non_member, active, comments
+
+
+def parse_bulk_player_rows(form):
+    rows = []
+    for player_id in form.getlist("player_id"):
+        player_id = (player_id or "").strip()
+        if not player_id:
+            continue
+        try:
+            UUID(str(player_id))
+        except ValueError as exc:
+            raise ValueError("One of the players could not be found.") from exc
+
+        display_name = (form.get(f"display_name[{player_id}]") or "").strip()
+        if not display_name:
+            raise ValueError("Every player needs a display name.")
+
+        non_member = form.get(f"non_member[{player_id}]") in ("on", "1", "true")
+        active = form.get(f"active[{player_id}]") in ("on", "1", "true")
+        comments = (form.get(f"comments[{player_id}]") or "").strip() or None
+        rows.append({
+            "id": player_id,
+            "display_name": display_name,
+            "non_member": non_member,
+            "active": active,
+            "comments": comments,
+        })
+    return rows
+
+
+def filter_players(players, status):
+    if status == "active":
+        return [player for player in players if player["active"]]
+    if status == "inactive":
+        return [player for player in players if not player["active"]]
+    if status == "non_member":
+        return [player for player in players if player["non_member"]]
+    return players
+
+
+def player_form_error_message(exc):
+    message = str(exc)
+    if "players" in message.lower() and "not found" in message.lower():
+        return "The players table is not set up yet."
+    return message
 
 
 def load_team_moments():
@@ -1146,7 +1535,12 @@ def draft_room():
 
 @app.route("/admin/draft")
 def admin_draft():
-    return render_template("admin/draft.html", active="draft")
+    draft_players = load_draft_players()
+    return render_template(
+        "admin/draft.html",
+        active="draft",
+        draft_players=draft_players,
+    )
 
 
 @app.route("/admin")
@@ -1161,6 +1555,237 @@ def admin_dashboard():
             "games, and tournament entry."
         ),
     )
+
+
+@app.route("/admin/players", methods=["GET", "POST"])
+def admin_players():
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in PLAYER_STATUS_FILTERS:
+        status = "all"
+
+    if request.method == "POST":
+        display_name, non_member, active, comments = parse_player_form(request.form)
+        if not display_name:
+            flash("Display name is required.", "error")
+            return redirect(url_for("admin_players", status=status))
+
+        try:
+            insert_supabase_row(
+                "players",
+                {
+                    "display_name": display_name,
+                    "non_member": non_member,
+                    "active": active,
+                    "comments": comments,
+                },
+            )
+        except RuntimeError as exc:
+            flash(player_form_error_message(exc), "error")
+            return redirect(url_for("admin_players", status=status))
+
+        flash(f"Added {display_name}.", "success")
+        return redirect(url_for("admin_players", status=status))
+
+    load_error = None
+    players = []
+    try:
+        players = filter_players(load_players(), status)
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    return render_template(
+        "admin/players.html",
+        active="players",
+        players=players,
+        load_error=load_error,
+        status=status,
+        status_filters=PLAYER_STATUS_FILTERS,
+    )
+
+
+@app.route("/admin/players/bulk-update", methods=["POST"])
+def admin_bulk_update_players():
+    status = (request.args.get("status") or request.form.get("status") or "all")
+    status = status.strip().lower()
+    if status not in PLAYER_STATUS_FILTERS:
+        status = "all"
+
+    try:
+        rows = parse_bulk_player_rows(request.form)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin_players", status=status))
+
+    if not rows:
+        flash("No players to update.", "error")
+        return redirect(url_for("admin_players", status=status))
+
+    try:
+        current_by_id = {player["id"]: player for player in load_players()}
+        updated_count = 0
+        for row in rows:
+            current = current_by_id.get(row["id"])
+            if not current:
+                flash("That player could not be found.", "error")
+                return redirect(url_for("admin_players", status=status))
+
+            current_comments = current["comments"] or None
+            if (
+                current["display_name"] == row["display_name"]
+                and current["non_member"] == row["non_member"]
+                and current["active"] == row["active"]
+                and current_comments == row["comments"]
+            ):
+                continue
+
+            updated = update_supabase_row(
+                "players",
+                row["id"],
+                {
+                    "display_name": row["display_name"],
+                    "non_member": row["non_member"],
+                    "active": row["active"],
+                    "comments": row["comments"],
+                },
+            )
+            if not updated:
+                flash("That player could not be found.", "error")
+                return redirect(url_for("admin_players", status=status))
+            updated_count += 1
+    except RuntimeError as exc:
+        flash(player_form_error_message(exc), "error")
+        return redirect(url_for("admin_players", status=status))
+
+    if updated_count:
+        flash(
+            f"Updated {updated_count} player{'s' if updated_count != 1 else ''}.",
+            "success",
+        )
+    else:
+        flash("No changes to save.", "success")
+    return redirect(url_for("admin_players", status=status))
+
+
+@app.route("/admin/seasons", methods=["GET", "POST"])
+def admin_seasons():
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in SEASON_STATUS_FILTERS:
+        status = "all"
+
+    if request.method == "POST":
+        try:
+            payload = parse_new_season_form(request.form)
+            insert_supabase_row("seasons", payload)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("admin_seasons", status=status))
+        except RuntimeError as exc:
+            flash(season_form_error_message(exc), "error")
+            return redirect(url_for("admin_seasons", status=status))
+
+        flash(f"Added {payload['season']}.", "success")
+        return redirect(url_for("admin_seasons", status=status))
+
+    load_error = None
+    seasons = []
+    try:
+        seasons = filter_seasons(load_season_records(), status)
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    current_year = datetime.now(timezone.utc).year
+    return render_template(
+        "admin/seasons.html",
+        active="seasons",
+        seasons=seasons,
+        load_error=load_error,
+        status=status,
+        status_filters=SEASON_STATUS_FILTERS,
+        season_statuses=SEASON_STATUSES,
+        season_quarters=SEASON_QUARTERS,
+        default_year=current_year,
+    )
+
+
+@app.route("/admin/seasons/bulk-update", methods=["POST"])
+def admin_bulk_update_seasons():
+    status = (request.args.get("status") or request.form.get("status") or "all")
+    status = status.strip().lower()
+    if status not in SEASON_STATUS_FILTERS:
+        status = "all"
+
+    try:
+        rows = parse_bulk_season_rows(request.form)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin_seasons", status=status))
+
+    if not rows:
+        flash("No seasons to update.", "error")
+        return redirect(url_for("admin_seasons", status=status))
+
+    try:
+        current_by_season = {
+            row["season"]: row for row in load_season_records()
+        }
+        updated_count = 0
+        for row in rows:
+            current = current_by_season.get(row["season"])
+            if not current:
+                flash("That season could not be found.", "error")
+                return redirect(url_for("admin_seasons", status=status))
+
+            if not season_row_changed(current, row):
+                continue
+
+            patch = {
+                key: value
+                for key, value in row.items()
+                if key != "season"
+            }
+            updated = update_supabase_row_by("seasons", "season", row["season"], patch)
+            if not updated:
+                flash("That season could not be found.", "error")
+                return redirect(url_for("admin_seasons", status=status))
+            updated_count += 1
+    except RuntimeError as exc:
+        flash(season_form_error_message(exc), "error")
+        return redirect(url_for("admin_seasons", status=status))
+
+    if updated_count:
+        flash(
+            f"Updated {updated_count} season{'s' if updated_count != 1 else ''}.",
+            "success",
+        )
+    else:
+        flash("No changes to save.", "success")
+    return redirect(url_for("admin_seasons", status=status))
+
+
+@app.route("/admin/seasons/delete", methods=["POST"])
+def admin_delete_season():
+    status = (request.args.get("status") or request.form.get("status") or "all")
+    status = status.strip().lower()
+    if status not in SEASON_STATUS_FILTERS:
+        status = "all"
+
+    season = (request.form.get("season") or "").strip()
+    confirm_season = (request.form.get("confirm_season") or "").strip()
+    if not season:
+        flash("Season label is required to delete.", "error")
+        return redirect(url_for("admin_seasons", status=status))
+    if confirm_season != season:
+        flash("Delete cancelled. Type the season label exactly to confirm.", "error")
+        return redirect(url_for("admin_seasons", status=status))
+
+    try:
+        delete_supabase_row_by("seasons", "season", season)
+    except RuntimeError as exc:
+        flash(season_form_error_message(exc), "error")
+        return redirect(url_for("admin_seasons", status=status))
+
+    flash(f"Deleted {season}.", "success")
+    return redirect(url_for("admin_seasons", status=status))
 
 
 @app.route("/admin/roster")
@@ -1333,6 +1958,7 @@ def admin_logout():
 def handle_connect():
     if not is_admin_session():
         return False
+    refresh_draft_pool_if_idle()
     emit("state_init", shared_state)
 
 
@@ -1448,41 +2074,68 @@ def handle_start_draft(data=None):
         emit("draft_message", {"message": "❌ Please select 3 captains."})
         return
 
-    captains = data["captains"]
-    captain_values = [captains.get(str(seed), "").strip() for seed in SEED_LABELS]
+    pool = load_draft_players()
+    if len(pool) < DRAFT_TEAM_COUNT:
+        emit("draft_message", {
+            "message": (
+                f"❌ Need at least {DRAFT_TEAM_COUNT} active members to draft. "
+                f"Currently {len(pool)}."
+            )
+        })
+        return
 
-    if any(not name for name in captain_values):
+    captains = data["captains"]
+    captain_ids = [str(captains.get(str(seed), "") or "").strip() for seed in SEED_LABELS]
+
+    if any(not player_id for player_id in captain_ids):
         emit("draft_message", {"message": "❌ Please select all 3 captains."})
         return
 
-    if len(set(captain_values)) != 3:
+    if len(set(captain_ids)) != DRAFT_TEAM_COUNT:
         emit("draft_message", {"message": "❌ Captains must be 3 different players."})
         return
 
-    if any(name not in ALL_PLAYERS for name in captain_values):
-        emit("draft_message", {"message": "❌ Invalid captain selection."})
-        return
+    captain_players = {}
+    for seed, player_id in zip(SEED_LABELS, captain_ids):
+        player = find_draft_player(pool, player_id)
+        if not player:
+            emit("draft_message", {"message": "❌ Captains must be active members."})
+            return
+        captain_players[str(seed)] = player
 
-    teams = {}
-    for seed in SEED_LABELS:
-        captain_name = captains[str(seed)].strip()
-        teams[str(seed)] = [captain_name]
+    teams = {
+        str(seed): [captain_players[str(seed)]]
+        for seed in SEED_LABELS
+    }
+    captain_id_set = set(captain_ids)
+    available_players = [
+        player for player in pool if player.get("id") not in captain_id_set
+    ]
+    pick_sequence = build_pick_sequence(DRAFT_TEAM_COUNT, len(available_players))
 
-    available_players = [p for p in ALL_PLAYERS if p not in captain_values]
-    rounds_needed = TEAM_SIZE - 1
-    pick_sequence = build_pick_sequence(team_count=3, rounds=rounds_needed)
+    if pick_sequence:
+        message = f"Draft started. Seed {pick_sequence[0]} is on the clock."
+        completed = False
+        current_seed = pick_sequence[0]
+    else:
+        message = "✅ Draft completed. Only captains were assigned."
+        completed = True
+        current_seed = None
 
     shared_state["draft"] = {
         "started": True,
-        "completed": False,
-        "captains": {str(seed): captains[str(seed)].strip() for seed in SEED_LABELS},
+        "completed": completed,
+        "captains": {
+            str(seed): captain_players[str(seed)]["id"] for seed in SEED_LABELS
+        },
         "teams": teams,
+        "player_pool": pool[:],
         "available_players": available_players,
         "pick_sequence": pick_sequence,
         "current_pick_index": 0,
-        "current_seed": pick_sequence[0] if pick_sequence else None,
+        "current_seed": current_seed,
         "last_pick": None,
-        "message": f"Draft started. Seed {pick_sequence[0]} is on the clock." if pick_sequence else "Draft started."
+        "message": message,
     }
 
     emit_draft_state()
@@ -1501,13 +2154,15 @@ def handle_make_draft_pick(data=None):
         emit("draft_message", {"message": "Draft is already complete."})
         return
 
-    if not data or "player" not in data:
+    player_id = ""
+    if data:
+        player_id = str(data.get("player_id") or data.get("player") or "").strip()
+    if not player_id:
         emit("draft_message", {"message": "❌ No player selected."})
         return
 
-    player = data["player"].strip()
-
-    if player not in draft["available_players"]:
+    player = find_draft_player(draft["available_players"], player_id)
+    if not player:
         emit("draft_message", {"message": "❌ That player is already taken or invalid."})
         return
 
@@ -1515,7 +2170,9 @@ def handle_make_draft_pick(data=None):
     current_seed = draft["pick_sequence"][pick_index_before]
     current_seed_key = str(current_seed)
     draft["teams"][current_seed_key].append(player)
-    draft["available_players"].remove(player)
+    draft["available_players"] = [
+        entry for entry in draft["available_players"] if entry.get("id") != player_id
+    ]
 
     draft["last_pick"] = {
         "player": player,
@@ -1524,6 +2181,7 @@ def handle_make_draft_pick(data=None):
     }
 
     draft["current_pick_index"] += 1
+    label = draft_player_label(player)
 
     if draft["current_pick_index"] >= len(draft["pick_sequence"]) or not draft["available_players"]:
         draft["completed"] = True
@@ -1532,7 +2190,10 @@ def handle_make_draft_pick(data=None):
     else:
         next_seed = draft["pick_sequence"][draft["current_pick_index"]]
         draft["current_seed"] = next_seed
-        draft["message"] = f"{player} drafted by Seed {current_seed}. Seed {next_seed} is now on the clock."
+        draft["message"] = (
+            f"{label} drafted by Seed {current_seed}. "
+            f"Seed {next_seed} is now on the clock."
+        )
 
     emit_draft_state()
 
@@ -1552,21 +2213,35 @@ def handle_undo_draft_pick():
         return
 
     player = last_pick["player"]
+    player_id = player.get("id") if isinstance(player, dict) else None
     seed = str(last_pick["seed"])
     pick_index_before = last_pick["pick_index_before"]
 
-    if player in draft["teams"].get(seed, []):
-        draft["teams"][seed].remove(player)
+    team = draft["teams"].get(seed, [])
+    draft["teams"][seed] = [
+        entry for entry in team
+        if not (isinstance(entry, dict) and entry.get("id") == player_id)
+    ]
 
-    if player not in draft["available_players"]:
+    if player_id and not find_draft_player(draft["available_players"], player_id):
         draft["available_players"].append(player)
-        draft["available_players"].sort(key=ALL_PLAYERS.index)
+        pool_order = {
+            entry.get("id"): index
+            for index, entry in enumerate(draft.get("player_pool") or [])
+        }
+        draft["available_players"].sort(
+            key=lambda entry: pool_order.get(entry.get("id"), len(pool_order))
+        )
 
     draft["completed"] = False
     draft["current_pick_index"] = pick_index_before
     draft["current_seed"] = draft["pick_sequence"][pick_index_before] if draft["pick_sequence"] else None
     draft["last_pick"] = None
-    draft["message"] = f"↩️ Undid last pick: {player}. Seed {draft['current_seed']} is back on the clock."
+    label = draft_player_label(player) if isinstance(player, dict) else str(player)
+    draft["message"] = (
+        f"↩️ Undid last pick: {label}. "
+        f"Seed {draft['current_seed']} is back on the clock."
+    )
 
     emit_draft_state()
 
@@ -1574,7 +2249,11 @@ def handle_undo_draft_pick():
 @socketio.on("reset_draft")
 @admin_socket_required
 def handle_reset_draft():
-    reset_draft_state("Draft reset. Select 3 captains and start again.")
+    pool = load_draft_players()
+    if pool and len(pool) >= DRAFT_TEAM_COUNT:
+        reset_draft_state("Draft reset. Select 3 captains and start again.")
+    else:
+        reset_draft_state()
     emit_draft_state()
 
 

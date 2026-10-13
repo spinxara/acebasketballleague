@@ -25,16 +25,18 @@ Live site: https://acebasketballteam.com
 - Weighted seed picking for NPS, KCN, and BK.
 - Settings menu to calculate odds from last-season win rates or enter captain-agreed percentages.
 - Seed history with a maximum of 100 runs before clearing history is required.
-- Three-team snake draft:
+- Three-team snake draft. The player pool is active members (`non_member = false`) from the Players table (mark people active before drafting). Roster size follows that list; team count stays fixed at 3.
 
 ```text
 1 -> 2 -> 3 -> 3 -> 2 -> 1 -> 1 -> 2 -> 3 -> 3 -> 2 -> 1 ...
 ```
 
 - One-level undo for the most recent draft pick.
-- Full draft reset for choosing new captains and restarting.
+- Full draft reset for choosing new captains and restarting (reloads the active player pool).
 - Team moments upload and delete (JPEG, PNG, WEBP, or GIF; 10MB max; optional 280-character caption).
-- Placeholder pages for dashboard, roster, games, and tournament (not wired yet).
+- Players page to list, add, and update league members and non-members (`active` / `non_member` / comments) in Supabase.
+- Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, and season page links.
+- Placeholder pages for dashboard, roster, games, and tournament (not wired yet). Roster remains season team assignment.
 
 Visiting `/draft` redirects to `/admin/draft`.
 
@@ -47,10 +49,16 @@ Visiting `/draft` redirects to `/admin/draft`.
 ├── runtime.txt                 # Python 3.12.8
 ├── templates/
 │   ├── public/                 # Public league pages
-│   └── admin/                  # Login, draft room, moments, placeholders
+│   └── admin/                  # Login, draft, players, seasons, moments, placeholders
 ├── static/                     # CSS, JS, and sponsor logos in static/sponsors/
 └── supabase/
-    └── team_moments.sql        # Team Moments table and storage bucket
+    ├── team_moments.sql                      # Team Moments table and storage bucket
+    ├── players.sql                           # League players table and seed
+    ├── players_drop_display_name_unique.sql  # Drop unique name constraint if present
+    ├── players_rename_guest_to_non_member.sql
+    ├── team_members_add_player_id.sql        # Link team_members to players.id
+    ├── player_stats_add_player_id.sql        # Link stats / played-games to players.id
+    └── players_seed_non_members.sql          # Seed (NM) non-members and re-link
 ```
 
 Older files such as `app_v1.00.py` and `advanced_random_order.py` are leftover experiments and are not used by the current app.
@@ -167,6 +175,13 @@ Add or edit entries in `SPONSORS` in `app.py`. Each sponsor can have a name, an 
 
 Draft state is shared live with everyone connected. Seed and draft socket events require an admin session.
 
+### Players
+
+1. Open **Players** in admin.
+2. Add a member or non-member with display name, optional comments, and active/non_member flags.
+3. Filter by All, Active, Inactive, or Non-member.
+4. Edit any rows, then click **Save all changes** once. Deactivate instead of deleting.
+
 ### Team moments
 
 1. Open **Team Moments** in admin.
@@ -182,13 +197,25 @@ Public stats pages expect these tables (or views):
 - `player_stats_by_season`
 - `team_matchup_strength`
 - `team_moments`
+- `players` (league members and non-members; draft pool = `active` and not `non_member`)
 
 Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
+
+To add the league members table and link season rosters / stats:
+
+1. Run `supabase/players.sql` (creates `players` and seeds current members; identity is `id`, duplicate display names are allowed; column is `non_member`, not `guest`).
+2. If `players` already had a unique name constraint, run `supabase/players_drop_display_name_unique.sql`.
+3. If `players` still has a `guest` column, run `supabase/players_rename_guest_to_non_member.sql`.
+4. Run `supabase/team_members_add_player_id.sql` (adds nullable `player_id` on `team_members`).
+5. Run `supabase/player_stats_add_player_id.sql` (adds nullable `player_id` on `player_played_games`, `player_stats_by_season`, and `player_stats_total`; backfills by name match).
+6. If unmatched `(NM)` names remain, run `supabase/players_seed_non_members.sql` (inserts those display names as `non_member = true`, then re-backfills).
+
+For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 
 ## Notes
 
 - The Render service must stay running for the public site and for Google to crawl it.
-- Roster, games, tournament, and dashboard admin pages are placeholders for later data-entry work.
+- Roster (season NPS/KCN/BK assignment), games, tournament, and dashboard admin pages are placeholders for later data-entry work. Seasons metadata is managed on the Seasons admin page.
 
 ## Maintainer
 

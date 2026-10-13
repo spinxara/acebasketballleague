@@ -25,8 +25,12 @@
             <tr>
               <th>Season</th>
               <th>Status</th>
+              <th>Dates</th>
               <th>Season Winner</th>
+              <th>Season Runner-up</th>
+              <th>Tournament</th>
               <th>Tournament Winner</th>
+              <th>Tournament Runner-up</th>
               <th>MIP Award</th>
               <th>Notes</th>
               <th>Season Page</th>
@@ -37,19 +41,31 @@
               <tr>
                 <td class="row-title">{{ row.season or "—" }}</td>
                 <td data-label="Status">
-                  {% if row.status %}
-                    <span class="status-pill {{ row.status_class }}">{{ row.status }}</span>
+                  {% if row.status_label or row.status %}
+                    <span class="status-pill {{ row.status_class }}">{{ row.status_label or row.status }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="Dates">
+                  {% if row.season_start_date or row.season_end_date %}
+                    {{ row.season_start_date or "—" }}
+                    –
+                    {{ row.season_end_date or "—" }}
                   {% else %}
                     —
                   {% endif %}
                 </td>
                 <td data-label="Season Winner">{{ row.season_winner or "—" }}</td>
+                <td data-label="Season Runner-up">{{ row.season_runnerup or "—" }}</td>
+                <td data-label="Tournament">{{ row.tournament_date or "—" }}</td>
                 <td data-label="Tournament Winner">{{ row.tournament_winner or "—" }}</td>
+                <td data-label="Tournament Runner-up">{{ row.tournament_runnerup or "—" }}</td>
                 <td data-label="MIP Award">{{ row.mip_award or "—" }}</td>
                 <td class="wrap-cell notes-cell" data-label="Notes">{{ row.notes or "—" }}</td>
                 <td data-label="Season Page">
-                  {% if row.season_page %}
-                    <a class="table-link" href="{{ row.season_page }}" target="_blank" rel="noopener noreferrer">Open</a>
+                  {% if row.season_page_url %}
+                    <a class="table-link" href="{{ row.season_page_url }}" target="_blank" rel="noopener noreferrer">Open</a>
                   {% else %}
                     —
                   {% endif %}

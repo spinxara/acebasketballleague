@@ -102,9 +102,11 @@
       <div class="card">
         <h1>ACE Player Draft Room</h1>
         <div class="muted" style="margin-bottom: 12px;">
+          The pool is active league members from the Players page (non-members excluded). Team count stays fixed at 3; roster size follows the active list.<br>
           Set the 3 captains by seed first. Each captain is auto-assigned to their own team, then the remaining players are drafted in snake order:<br>
           <strong>1 → 2 → 3 → 3 → 2 → 1 → 1 → 2 → 3 → 3 → 2 → 1 ...</strong>
         </div>
+        <div id="draftPoolNote" class="muted" style="margin-bottom: 12px;"></div>
 
         <div class="captain-row">
           <div>
@@ -151,29 +153,7 @@
     const socket = io();
 
     const TEAM_NAMES = ["NPS", "KCN", "BK"];
-    const ALL_PLAYERS = [
-      "Alex Hahn",
-      "Allen 기준 Lee",
-      "Boum Soo Kim",
-      "Brian 병훈 Paek",
-      "Clan Hahn",
-      "Dae Young Roh",
-      "David 민형 Jin",
-      "Donggyu Lee",
-      "Dongjun Min",
-      "Edward 에디 Kim",
-      "Eric 형승 Lim",
-      "Johann Lee",
-      "Mike Hong",
-      "Min Hun 민훈 Paik",
-      "Minwoo Cho",
-      "Peter 석현 Yeon",
-      "Quinn 규현 Chung",
-      "Sangmin Moon",
-      "Shawn White",
-      "Tenzing Sherpa",
-      "Tong Young Ko"
-    ];
+    let ALL_PLAYERS = {{ draft_players | tojson }};
 
     const TEAM_CAPTAINS = {
       NPS: "Minwoo Cho",
@@ -221,19 +201,56 @@
     const pickSequence = document.getElementById("pickSequence");
     const teamsGrid = document.getElementById("teamsGrid");
     const playerPool = document.getElementById("playerPool");
+    const draftPoolNote = document.getElementById("draftPoolNote");
     let draftStarted = false;
 
-    function initCaptainSelects() {
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function playerLabel(player) {
+      const name = (player && player.display_name) || "";
+      const comments = ((player && player.comments) || "").trim();
+      return comments ? `${name} — ${comments}` : name;
+    }
+
+    function findPlayerById(players, playerId) {
+      return (players || []).find(player => player && player.id === playerId) || null;
+    }
+
+    function findPlayerByDisplayName(players, displayName) {
+      return (players || []).find(player => player && player.display_name === displayName) || null;
+    }
+
+    function initCaptainSelects(players, selectedCaptains = {}) {
+      const pool = players || ALL_PLAYERS || [];
       const selects = [captain1, captain2, captain3];
-      selects.forEach(select => {
+      selects.forEach((select, idx) => {
+        const previous = selectedCaptains[String(idx + 1)] || select.value;
         select.innerHTML = '<option value="">Select captain</option>';
-        ALL_PLAYERS.forEach(player => {
+        pool.forEach(player => {
           const option = document.createElement("option");
-          option.value = player;
-          option.textContent = player;
+          option.value = player.id;
+          option.textContent = playerLabel(player);
           select.appendChild(option);
         });
+        if (previous && findPlayerById(pool, previous)) {
+          select.value = previous;
+        }
       });
+    }
+
+    function updateDraftPoolNote(players) {
+      const count = (players || []).length;
+      if (!count) {
+        draftPoolNote.textContent = "No active players in the pool yet.";
+        return;
+      }
+      draftPoolNote.textContent = `${count} active player${count === 1 ? "" : "s"} in the draft pool (3 teams).`;
     }
 
     function renderSeedProbabilities(items) {
@@ -339,9 +356,10 @@
 
       const selects = [captain1, captain2, captain3];
       result.rows.forEach((row, index) => {
-        const captain = TEAM_CAPTAINS[row.team];
+        const captainName = TEAM_CAPTAINS[row.team];
+        const captain = findPlayerByDisplayName(ALL_PLAYERS, captainName);
         if (captain && selects[index]) {
-          selects[index].value = captain;
+          selects[index].value = captain.id;
         }
       });
     }
@@ -368,19 +386,28 @@
     function renderDraft(state) {
       draftStarted = Boolean(state?.started);
       const teams = state?.teams || { "1": [], "2": [], "3": [] };
-      const availablePlayers = state?.available_players || ALL_PLAYERS;
+      const playerPoolList = state?.player_pool || ALL_PLAYERS;
+      const availablePlayers = state?.available_players || playerPoolList;
       const sequence = state?.pick_sequence || [];
       const currentPickIndex = state?.current_pick_index || 0;
       const currentSeed = state?.current_seed;
       const captains = state?.captains || {};
       const lastPick = state?.last_pick || null;
 
-      [captain1, captain2, captain3].forEach((select, idx) => {
-        const seed = String(idx + 1);
-        if (captains[seed]) {
-          select.value = captains[seed];
-        }
-      });
+      if (Array.isArray(playerPoolList)) {
+        ALL_PLAYERS = playerPoolList;
+      }
+      updateDraftPoolNote(playerPoolList);
+      if (!draftStarted) {
+        initCaptainSelects(playerPoolList, captains);
+      } else {
+        [captain1, captain2, captain3].forEach((select, idx) => {
+          const seed = String(idx + 1);
+          if (captains[seed]) {
+            select.value = captains[seed];
+          }
+        });
+      }
 
       if (!state?.started) {
         onClockBadge.textContent = "Not started";
@@ -411,7 +438,15 @@
             <div class="turn-badge ${isActiveTurn ? 'active' : ''}">${isActiveTurn ? 'NOW PICKING' : 'WAITING'}</div>
             <h3>Seed ${seed} Team</h3>
             <ol class="team-list">
-              ${members.length ? members.map(name => `<li>${name}</li>`).join("") : '<li class="muted">No players yet</li>'}
+              ${members.length
+                ? members.map(member => {
+                    const name = escapeHtml(member.display_name || "");
+                    const comments = escapeHtml((member.comments || "").trim());
+                    return comments
+                      ? `<li>${name}<span class="player-comment"> — ${comments}</span></li>`
+                      : `<li>${name}</li>`;
+                  }).join("")
+                : '<li class="muted">No players yet</li>'}
             </ol>
           </div>
         `;
@@ -423,18 +458,19 @@
       } else {
         const disabled = !state?.started || state?.completed;
         playerPool.innerHTML = availablePlayers.map(player => {
-          const safePlayer = player
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-          return `<button class="player-btn" data-player="${safePlayer}" ${disabled ? 'disabled' : ''}>${safePlayer}</button>`;
+          const safeId = escapeHtml(player.id);
+          const safeName = escapeHtml(player.display_name || "");
+          const comments = (player.comments || "").trim();
+          const commentHtml = comments
+            ? `<span class="player-btn-comment">${escapeHtml(comments)}</span>`
+            : "";
+          return `<button class="player-btn" data-player-id="${safeId}" ${disabled ? 'disabled' : ''}><span class="player-btn-name">${safeName}</span>${commentHtml}</button>`;
         }).join("");
 
         playerPool.querySelectorAll('.player-btn').forEach(button => {
           button.addEventListener('click', () => {
-            const player = button.getAttribute('data-player');
-            socket.emit('make_draft_pick', { player });
+            const playerId = button.getAttribute('data-player-id');
+            socket.emit('make_draft_pick', { player_id: playerId });
           });
         });
       }
@@ -555,17 +591,20 @@
       });
     });
 
-    initCaptainSelects();
+    initCaptainSelects(ALL_PLAYERS);
     renderDraft({
       started: false,
       completed: false,
       teams: { "1": [], "2": [], "3": [] },
+      player_pool: ALL_PLAYERS,
       available_players: ALL_PLAYERS,
       pick_sequence: [],
       current_pick_index: 0,
       current_seed: null,
       last_pick: null,
-      message: "Select 3 captains and start the draft."
+      message: ALL_PLAYERS.length
+        ? "Select 3 captains and start the draft."
+        : "No active players. Mark league members active on the Players page first."
     });
   </script>
 {% endblock %}

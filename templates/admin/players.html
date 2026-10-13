@@ -1,0 +1,159 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Players · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Players</h2>
+    <p class="lead">Manage league members and non-members in the players table.</p>
+    <p class="note">Set a player inactive instead of deleting. Season team assignment stays on Roster.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="form-messages">
+          {% for category, message in messages %}
+            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form
+      class="upload-form players-form"
+      method="post"
+      action="{{ url_for('admin_players', status=status) }}"
+    >
+      <label for="display_name">Display name</label>
+      <input
+        id="display_name"
+        name="display_name"
+        type="text"
+        maxlength="120"
+        required
+        autocomplete="off"
+        placeholder="Full name as shown on stats"
+      />
+
+      <label for="comments">Comments (optional)</label>
+      <input
+        id="comments"
+        name="comments"
+        type="text"
+        maxlength="280"
+        placeholder="Notes for captains"
+      />
+
+      <div class="players-checks">
+        <label class="players-check">
+          <input type="checkbox" name="active" value="on" checked />
+          Active
+        </label>
+        <label class="players-check">
+          <input type="checkbox" name="non_member" value="on" />
+          Non-member
+        </label>
+      </div>
+
+      <button class="login-submit" type="submit">Add player</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h3>Player list</h3>
+
+    <nav class="players-filters" aria-label="Filter players">
+      {% for filter_id in status_filters %}
+        <a
+          class="players-filter{{ ' active' if status == filter_id else '' }}"
+          href="{{ url_for('admin_players', status=filter_id) }}"
+        >
+          {{ filter_id|replace('_', '-')|capitalize }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    {% if load_error %}
+      <p class="error-note">Could not load players. {{ load_error }}</p>
+    {% elif not players %}
+      <p class="note">No players match this filter.</p>
+    {% else %}
+      <form
+        class="players-bulk-form"
+        method="post"
+        action="{{ url_for('admin_bulk_update_players', status=status) }}"
+      >
+        <input type="hidden" name="status" value="{{ status }}" />
+        <div class="players-bulk-actions">
+          <p class="note">{{ players | length }} player{% if players | length != 1 %}s{% endif %}.</p>
+          <button class="login-submit" type="submit">Save all changes</button>
+        </div>
+        <div class="table-wrap">
+          <table class="players-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Non-member</th>
+                <th>Active</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for player in players %}
+                <tr>
+                  <td>
+                    <input type="hidden" name="player_id" value="{{ player.id }}" />
+                    <input
+                      class="players-name-input"
+                      name="display_name[{{ player.id }}]"
+                      type="text"
+                      maxlength="120"
+                      required
+                      value="{{ player.display_name }}"
+                      aria-label="Display name for {{ player.display_name }}"
+                    />
+                  </td>
+                  <td>
+                    <label class="players-check">
+                      <input
+                        type="checkbox"
+                        name="non_member[{{ player.id }}]"
+                        value="on"
+                        {% if player.non_member %}checked{% endif %}
+                      />
+                      Non-member
+                    </label>
+                  </td>
+                  <td>
+                    <label class="players-check">
+                      <input
+                        type="checkbox"
+                        name="active[{{ player.id }}]"
+                        value="on"
+                        {% if player.active %}checked{% endif %}
+                      />
+                      Active
+                    </label>
+                  </td>
+                  <td>
+                    <input
+                      class="players-comments-input"
+                      name="comments[{{ player.id }}]"
+                      type="text"
+                      maxlength="280"
+                      value="{{ player.comments }}"
+                      placeholder="—"
+                      aria-label="Comments for {{ player.display_name }}"
+                    />
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="players-bulk-actions players-bulk-actions-bottom">
+          <button class="login-submit" type="submit">Save all changes</button>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
