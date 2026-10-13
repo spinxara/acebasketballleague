@@ -35,6 +35,7 @@ app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
+CAPTAIN_PASSWORD = os.environ.get("CAPTAIN_PASSWORD") or ""
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW = timedelta(minutes=10)
 _login_attempts = {}
@@ -104,8 +105,30 @@ ADMIN_NAV = [
 ]
 
 
+def session_admin_role():
+    role = session.get("admin_role")
+    if role in {"admin", "captain"}:
+        return role
+    # Legacy sessions set only is_admin before roles existed.
+    if session.get("is_admin"):
+        return "admin"
+    return None
+
+
 def is_admin_session():
-    return bool(session.get("is_admin"))
+    return session_admin_role() is not None
+
+
+def is_full_admin_session():
+    return session_admin_role() == "admin"
+
+
+def is_captain_session():
+    return session_admin_role() == "captain"
+
+
+def captain_may_access(path):
+    return path == "/admin/draft" or path.startswith("/admin/draft/")
 
 
 def client_ip():
@@ -138,22 +161,38 @@ def clear_failed_logins(ip):
         _login_attempts.pop(ip, None)
 
 
-def password_matches(submitted):
-    if not ADMIN_PASSWORD:
+def _password_equals(submitted, expected):
+    if not expected:
         return False
     secret = str(app.config["SECRET_KEY"]).encode("utf-8")
     guessed = hmac.new(secret, (submitted or "").encode("utf-8"), "sha256").digest()
-    expected = hmac.new(secret, ADMIN_PASSWORD.encode("utf-8"), "sha256").digest()
-    return hmac.compare_digest(guessed, expected)
+    target = hmac.new(secret, expected.encode("utf-8"), "sha256").digest()
+    return hmac.compare_digest(guessed, target)
 
 
-def safe_admin_next(value):
+def resolve_login_role(submitted):
+    admin_ok = _password_equals(submitted, ADMIN_PASSWORD)
+    captain_ok = _password_equals(submitted, CAPTAIN_PASSWORD)
+    if admin_ok:
+        return "admin"
+    if captain_ok:
+        return "captain"
+    return None
+
+
+def safe_admin_next(value, role=None):
+    role = role or session_admin_role()
+    default = (
+        url_for("admin_draft") if role == "captain" else url_for("admin_dashboard")
+    )
     if not isinstance(value, str):
-        return url_for("admin_dashboard")
+        return default
     path = urlparse(value).path
-    if path.startswith("/admin") and not path.startswith("/admin/login"):
-        return path
-    return url_for("admin_dashboard")
+    if not (path.startswith("/admin") and not path.startswith("/admin/login")):
+        return default
+    if role == "captain" and not captain_may_access(path):
+        return url_for("admin_draft")
+    return path
 
 
 def admin_socket_required(handler):
@@ -173,9 +212,12 @@ def inject_globals():
     if not path.startswith("/"):
         path = "/" + path
     logo_url = SITE_URL + url_for("static", filename="logo.png")
+    admin_nav = ADMIN_NAV
+    if is_captain_session():
+        admin_nav = [item for item in ADMIN_NAV if item["id"] == "draft"]
     return {
         "public_nav": PUBLIC_NAV,
-        "admin_nav": ADMIN_NAV,
+        "admin_nav": admin_nav,
         "rules_url": RULES_URL,
         "youtube_url": YOUTUBE_URL,
         "instagram_url": INSTAGRAM_URL,
@@ -186,6 +228,8 @@ def inject_globals():
         "maintainer_email_user": MAINTAINER_EMAIL_USER,
         "maintainer_email_domain": MAINTAINER_EMAIL_DOMAIN,
         "is_admin": is_admin_session(),
+        "is_full_admin": is_full_admin_session(),
+        "is_captain": is_captain_session(),
         "site_url": SITE_URL,
         "canonical_url": SITE_URL + path,
         "logo_url": logo_url,
@@ -233,9 +277,11 @@ def require_admin_for_admin_pages():
         return None
     if request.endpoint in {"admin_login", "admin_logout"}:
         return None
-    if is_admin_session():
-        return None
-    return redirect(url_for("admin_login", next=request.path))
+    if not is_admin_session():
+        return redirect(url_for("admin_login", next=request.path))
+    if is_captain_session() and not captain_may_access(request.path):
+        return redirect(url_for("admin_draft"))
+    return None
 
 
 TEAM_NAMES = ["NPS", "KCN", "BK"]
@@ -1931,12 +1977,14 @@ def admin_login():
                 next_url=next_url,
             ), 429
 
-        if password_matches(request.form.get("password")):
+        role = resolve_login_role(request.form.get("password"))
+        if role:
             clear_failed_logins(ip)
             session.clear()
+            session["admin_role"] = role
             session["is_admin"] = True
             session.permanent = True
-            return redirect(safe_admin_next(next_url))
+            return redirect(safe_admin_next(next_url, role=role))
 
         record_failed_login(ip)
         flash("Incorrect password.")

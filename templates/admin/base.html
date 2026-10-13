@@ -18,7 +18,13 @@
       />
       <div class="admin-brand-copy">
         <h1>ACE League Admin</h1>
-        <p>Captain and admin tools for roster, games, and tournament entry.</p>
+        <p>
+          {% if is_captain %}
+          Captain access · draft room only.
+          {% else %}
+          Captain and admin tools for roster, games, and tournament entry.
+          {% endif %}
+        </p>
       </div>
     </div>
     {% if is_admin %}
@@ -41,7 +47,7 @@
   </main>
 
   <footer class="site-footer admin-footer">
-    <span>Admin area · captains only</span>
+    <span>{% if is_captain %}Captain access · draft only{% else %}Admin area · captains only{% endif %}</span>
     <a href="{{ url_for('home') }}">Back to public site</a>
   </footer>
   {% block scripts %}{% endblock %}

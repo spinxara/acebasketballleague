@@ -20,7 +20,7 @@ Live site: https://acebasketballteam.com
 
 ### Admin
 
-- Password-protected captain login at `/admin`.
+- Password-protected login at `/admin` (`ADMIN_PASSWORD` for full access, `CAPTAIN_PASSWORD` for draft-only captain access).
 - Draft room at `/admin/draft` with shared real-time state over Socket.IO.
 - Weighted seed picking for NPS, KCN, and BK.
 - Settings menu to calculate odds from last-season win rates or enter captain-agreed percentages.
@@ -85,6 +85,7 @@ Copy these into a `.env` file in the project root. `.env` is gitignored.
 ```bash
 SECRET_KEY=change-this
 ADMIN_PASSWORD=your-admin-password
+CAPTAIN_PASSWORD=your-captain-password
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_API_KEY=your-supabase-anon-or-service-key
 SESSION_COOKIE_SECURE=false
@@ -96,7 +97,8 @@ SITE_URL=https://acebasketballteam.com
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `SECRET_KEY` | Yes in production | Flask session signing. Default is `change-this`. |
-| `ADMIN_PASSWORD` | Yes for admin | Shared captain password. Admin login fails if this is empty. |
+| `ADMIN_PASSWORD` | Yes for full admin | Full admin access (all `/admin` pages). Login as admin fails if this is empty. |
+| `CAPTAIN_PASSWORD` | Yes for captain access | Draft-room-only access. Captain login fails if this is empty. |
 | `SUPABASE_URL` | Yes for stats and moments | Project URL with no trailing slash. |
 | `SUPABASE_API_KEY` | Yes for stats and moments | Supabase API key used for REST and storage. |
 | `SESSION_COOKIE_SECURE` | No | Set `true` when serving over HTTPS. |
@@ -155,8 +157,9 @@ Add or edit entries in `SPONSORS` in `app.py`. Each sponsor can have a name, an 
 
 ### Admin login
 
-1. Go to `/admin` and enter `ADMIN_PASSWORD`.
-2. Login is rate-limited: 5 failed attempts per IP in 10 minutes.
+1. Go to `/admin` and enter `ADMIN_PASSWORD` (full access) or `CAPTAIN_PASSWORD` (draft room only).
+2. Captains are redirected to `/admin/draft` and cannot open other admin pages.
+3. Login is rate-limited: 5 failed attempts per IP in 10 minutes.
 
 ### Seed picking
 
@@ -173,7 +176,7 @@ Add or edit entries in `SPONSORS` in `app.py`. Each sponsor can have a name, an 
 4. Use **Undo Last Pick** to revert the most recent pick.
 5. Use **Reset Draft** to clear the draft and start over.
 
-Draft state is shared live with everyone connected. Seed and draft socket events require an admin session.
+Draft state is shared live with everyone connected. Seed and draft socket events require an admin or captain session.
 
 ### Players
 
