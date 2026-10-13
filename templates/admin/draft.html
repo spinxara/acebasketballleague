@@ -464,15 +464,15 @@
           const commentHtml = comments
             ? `<span class="player-btn-comment">${escapeHtml(comments)}</span>`
             : "";
-          return `<button class="player-btn" data-player-id="${safeId}" ${disabled ? 'disabled' : ''}><span class="player-btn-name">${safeName}</span>${commentHtml}</button>`;
+          const disabledClass = disabled ? " is-disabled" : "";
+          return `
+            <div class="player-card${disabledClass}" data-player-id="${safeId}" ${disabled ? 'aria-disabled="true"' : ''}>
+              <span class="player-btn-name">${safeName}</span>
+              ${commentHtml}
+              <button type="button" class="player-select-btn">Select</button>
+            </div>
+          `;
         }).join("");
-
-        playerPool.querySelectorAll('.player-btn').forEach(button => {
-          button.addEventListener('click', () => {
-            const playerId = button.getAttribute('data-player-id');
-            socket.emit('make_draft_pick', { player_id: playerId });
-          });
-        });
       }
 
       undoDraftBtn.disabled = !lastPick;
@@ -511,6 +511,33 @@
 
     clearBtn.addEventListener("click", () => {
       socket.emit("clear_history");
+    });
+
+    playerPool.addEventListener("click", (event) => {
+      const selectBtn = event.target.closest(".player-select-btn");
+      if (selectBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const card = selectBtn.closest(".player-card");
+        if (!card || card.classList.contains("is-disabled")) return;
+        const playerId = card.getAttribute("data-player-id");
+        if (!playerId) return;
+        socket.emit("make_draft_pick", { player_id: playerId });
+        return;
+      }
+
+      const card = event.target.closest(".player-card");
+      if (!card || !playerPool.contains(card) || card.classList.contains("is-disabled")) {
+        return;
+      }
+
+      const wasSelected = card.classList.contains("is-selected");
+      playerPool.querySelectorAll(".player-card.is-selected").forEach(selected => {
+        selected.classList.remove("is-selected");
+      });
+      if (!wasSelected) {
+        card.classList.add("is-selected");
+      }
     });
 
     startDraftBtn.addEventListener("click", () => {

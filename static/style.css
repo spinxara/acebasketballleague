@@ -931,6 +931,7 @@ h3 {
   gap: 10px;
 }
 
+.draft-room .player-card,
 .draft-room .player-btn {
   width: 100%;
   text-align: left;
@@ -938,6 +939,10 @@ h3 {
   border: 1px solid var(--admin-line);
   color: var(--admin-text);
   margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .draft-room .player-btn-name {
@@ -955,10 +960,39 @@ h3 {
   margin-top: 2px;
 }
 
+.draft-room .player-card:hover:not(.is-disabled),
 .draft-room .player-btn:hover:not(:disabled) {
   background: #164e63;
 }
 
+.draft-room .player-card.is-selected {
+  border-color: var(--admin-accent);
+}
+
+.draft-room .player-select-btn {
+  display: none;
+  margin-top: 10px;
+  margin-right: 0;
+  margin-bottom: 0;
+  padding: 8px 14px;
+  font-size: 0.9em;
+  background: var(--admin-accent);
+  border: none;
+  border-radius: 8px;
+  color: #082f49;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.draft-room .player-card.is-selected .player-select-btn {
+  display: inline-block;
+}
+
+.draft-room .player-select-btn:hover {
+  filter: brightness(1.08);
+}
+
+.draft-room .player-card.is-disabled,
 .draft-room .player-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
