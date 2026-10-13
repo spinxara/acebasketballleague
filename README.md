@@ -201,6 +201,7 @@ Public stats pages expect these tables (or views):
 - `team_matchup_strength`
 - `team_moments`
 - `players` (league members and non-members; draft pool = `active` and not `non_member`)
+- `team_members` (per-season roster; filled from Draft Room after a completed draft)
 
 Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
 
@@ -215,10 +216,14 @@ To add the league members table and link season rosters / stats:
 
 For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 
+For Draft Room “Save to roster” (writes to `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to insert roster rows.
+
+For Draft Room “Save to roster” (writes to `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to insert roster rows.
+
 ## Notes
 
 - The Render service must stay running for the public site and for Google to crawl it.
-- Roster (season NPS/KCN/BK assignment), games, tournament, and dashboard admin pages are placeholders for later data-entry work. Seasons metadata is managed on the Seasons admin page.
+- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Games, tournament, and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
 
 ## Maintainer
 

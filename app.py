@@ -320,6 +320,8 @@ shared_state = {
         "current_pick_index": 0,
         "current_seed": None,
         "last_pick": None,
+        "roster_saved": False,
+        "roster_saved_season": None,
         "message": "Select 3 captains and start the draft."
     }
 }
@@ -565,6 +567,8 @@ def reset_draft_state(message=None):
         "current_pick_index": 0,
         "current_seed": None,
         "last_pick": None,
+        "roster_saved": False,
+        "roster_saved_season": None,
         "message": message if message is not None else draft_idle_message(pool),
     }
 
@@ -581,6 +585,110 @@ def refresh_draft_pool_if_idle():
 
 def emit_draft_state():
     socketio.emit("draft_state", shared_state["draft"])
+
+
+def season_starting_month(quarter):
+    return QUARTER_STARTING_MONTH.get(quarter)
+
+
+def load_draft_season_options():
+    """Compact season list for the Save to roster dropdown."""
+    try:
+        seasons = load_season_records()
+    except Exception:
+        return []
+
+    def option_sort_key(row):
+        status = (row.get("status") or "").strip().lower()
+        # Prefer planned/active seasons near the top for draft save.
+        status_rank = 0 if status in {"planned", "active"} else 1
+        return (status_rank, *season_sort_key(row))
+
+    seasons = sorted(seasons, key=option_sort_key)
+    return [
+        {
+            "season": row["season"],
+            "status": row.get("status") or "",
+            "status_label": row.get("status_label") or "",
+        }
+        for row in seasons
+        if row.get("season")
+    ]
+
+
+def parse_seed_team_map(data):
+    if not data or "seed_teams" not in data:
+        raise ValueError("Map each seed to NPS, KCN, or BK.")
+
+    raw = data.get("seed_teams") or {}
+    mapping = {}
+    for seed in SEED_LABELS:
+        team = str(raw.get(str(seed)) or raw.get(seed) or "").strip().upper()
+        if team not in TEAM_NAMES:
+            raise ValueError(f"Seed {seed} must be mapped to NPS, KCN, or BK.")
+        mapping[str(seed)] = team
+
+    if len(set(mapping.values())) != DRAFT_TEAM_COUNT:
+        raise ValueError("Each of NPS, KCN, and BK must be used exactly once.")
+    return mapping
+
+
+def build_team_member_rows(draft, season_label, seed_teams):
+    quarter, year = parse_season_label(season_label)
+    if not quarter or year is None:
+        raise ValueError("Choose a valid season.")
+    starting_month = season_starting_month(quarter)
+    if starting_month is None:
+        raise ValueError("Choose a valid season.")
+
+    rows = []
+    seen_player_ids = set()
+    for seed in SEED_LABELS:
+        seed_key = str(seed)
+        season_team = seed_teams[seed_key]
+        members = draft.get("teams", {}).get(seed_key) or []
+        if not members:
+            raise ValueError(f"Seed {seed} has no players to save.")
+        for member in members:
+            if not isinstance(member, dict):
+                raise ValueError("Draft teams are missing player details.")
+            player_id = str(member.get("id") or "").strip()
+            display_name = (member.get("display_name") or "").strip()
+            if not player_id or not display_name:
+                raise ValueError("Every drafted player needs an id and display name.")
+            if player_id in seen_player_ids:
+                raise ValueError(f"{display_name} appears on more than one team.")
+            seen_player_ids.add(player_id)
+            rows.append({
+                "season_team": season_team,
+                "player": display_name,
+                "player_id": player_id,
+                "season": season_label,
+                "season_year": year,
+                "season_starting_month": starting_month,
+            })
+    return rows
+
+
+def team_members_exist_for_season(season_label):
+    encoded = urllib.parse.quote(str(season_label), safe="")
+    payload = supabase_request(
+        f"team_members?select=id&season=eq.{encoded}&limit=1"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    return isinstance(rows, list) and len(rows) > 0
+
+
+def roster_form_error_message(exc):
+    message = str(exc)
+    if "RLS" in message or "row-level security" in message.lower():
+        return (
+            "Supabase blocked the write. Run supabase/team_members_admin_policies.sql "
+            "in the SQL editor, then try again."
+        )
+    if "team_members" in message.lower() and "not found" in message.lower():
+        return "The team_members table is not set up yet."
+    return message
 
 
 SEASON_COLUMNS = (
@@ -629,6 +737,12 @@ QUARTER_WEIGHT = {
     "Apr-Jun": 2,
     "Jan-Mar": 1,
 }
+QUARTER_STARTING_MONTH = {
+    "Jan-Mar": 1,
+    "Apr-Jun": 4,
+    "Jul-Sep": 7,
+    "Oct-Dec": 10,
+}
 
 
 def supabase_config():
@@ -663,6 +777,8 @@ def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
                 raise RuntimeError("The players table is not set up yet.") from exc
             if "seasons" in body:
                 raise RuntimeError("The seasons table is not set up yet.") from exc
+            if "team_members" in body:
+                raise RuntimeError("The team_members table is not set up yet.") from exc
             raise RuntimeError("Supabase table or file was not found.") from exc
         detail = ""
         try:
@@ -743,6 +859,21 @@ def insert_supabase_row(table, row):
     if isinstance(data, list) and data:
         return data[0]
     if isinstance(data, dict):
+        return data
+    raise RuntimeError("Unexpected Supabase response.")
+
+
+def insert_supabase_rows(table, rows):
+    if not rows:
+        return []
+    payload = supabase_request(
+        table,
+        method="POST",
+        body=rows,
+        extra_headers={"Prefer": "return=representation"},
+    )
+    data = parse_supabase_json(payload, empty=[])
+    if isinstance(data, list):
         return data
     raise RuntimeError("Unexpected Supabase response.")
 
@@ -1582,10 +1713,12 @@ def draft_room():
 @app.route("/admin/draft")
 def admin_draft():
     draft_players = load_draft_players()
+    draft_seasons = load_draft_season_options()
     return render_template(
         "admin/draft.html",
         active="draft",
         draft_players=draft_players,
+        draft_seasons=draft_seasons,
     )
 
 
@@ -2183,6 +2316,8 @@ def handle_start_draft(data=None):
         "current_pick_index": 0,
         "current_seed": current_seed,
         "last_pick": None,
+        "roster_saved": False,
+        "roster_saved_season": None,
         "message": message,
     }
 
@@ -2282,6 +2417,8 @@ def handle_undo_draft_pick():
         )
 
     draft["completed"] = False
+    draft["roster_saved"] = False
+    draft["roster_saved_season"] = None
     draft["current_pick_index"] = pick_index_before
     draft["current_seed"] = draft["pick_sequence"][pick_index_before] if draft["pick_sequence"] else None
     draft["last_pick"] = None
@@ -2303,6 +2440,59 @@ def handle_reset_draft():
     else:
         reset_draft_state()
     emit_draft_state()
+
+
+@socketio.on("save_draft_roster")
+@admin_socket_required
+def handle_save_draft_roster(data=None):
+    draft = shared_state["draft"]
+
+    if not draft.get("started"):
+        emit("draft_message", {"message": "❌ Start and complete the draft first."})
+        return
+    if not draft.get("completed"):
+        emit("draft_message", {"message": "❌ Finish the draft before saving the roster."})
+        return
+    if draft.get("roster_saved"):
+        season = draft.get("roster_saved_season") or "that season"
+        emit("draft_message", {
+            "message": f"Roster already saved for {season}. Reset the draft to start over."
+        })
+        return
+
+    season_label = ""
+    if data:
+        season_label = str(data.get("season") or "").strip()
+    if not season_label:
+        emit("draft_message", {"message": "❌ Choose which season this roster is for."})
+        return
+
+    try:
+        known_seasons = {row["season"] for row in load_draft_season_options()}
+        if season_label not in known_seasons:
+            raise ValueError("Choose a season from the Seasons list.")
+        seed_teams = parse_seed_team_map(data)
+        rows = build_team_member_rows(draft, season_label, seed_teams)
+        if team_members_exist_for_season(season_label):
+            raise ValueError(
+                f"{season_label} already has team_members rows. "
+                "Clear or fix that season in Supabase before saving again."
+            )
+        insert_supabase_rows("team_members", rows)
+    except ValueError as exc:
+        emit("draft_message", {"message": f"❌ {exc}"})
+        return
+    except RuntimeError as exc:
+        emit("draft_message", {"message": f"❌ {roster_form_error_message(exc)}"})
+        return
+
+    draft["roster_saved"] = True
+    draft["roster_saved_season"] = season_label
+    draft["message"] = (
+        f"✅ Saved {len(rows)} team members for {season_label}."
+    )
+    emit_draft_state()
+    emit("draft_message", {"message": draft["message"]})
 
 
 if __name__ == "__main__":

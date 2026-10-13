@@ -140,6 +140,47 @@
         <div class="draft-grid" id="teamsGrid"></div>
       </div>
 
+      <div class="card" id="saveRosterCard" hidden>
+        <h2>Save to Roster</h2>
+        <div class="muted" style="margin-bottom: 12px;">
+          Choose the season and map each seed team to NPS, KCN, or BK, then preview and save.
+          Nothing is written until you click Save roster.
+        </div>
+        <div class="roster-save-grid">
+          <div>
+            <label for="rosterSeason">Season</label>
+            <select id="rosterSeason">
+              <option value="">Select season</option>
+            </select>
+          </div>
+          <div>
+            <label for="seedTeam1">Seed 1 → Team</label>
+            <select id="seedTeam1">
+              <option value="">Select team</option>
+            </select>
+          </div>
+          <div>
+            <label for="seedTeam2">Seed 2 → Team</label>
+            <select id="seedTeam2">
+              <option value="">Select team</option>
+            </select>
+          </div>
+          <div>
+            <label for="seedTeam3">Seed 3 → Team</label>
+            <select id="seedTeam3">
+              <option value="">Select team</option>
+            </select>
+          </div>
+        </div>
+        <div id="rosterPreview" class="roster-preview muted" style="margin-top: 14px;">
+          Preview will appear here.
+        </div>
+        <div style="margin-top: 14px;">
+          <button class="secondary" id="saveRosterBtn" type="button" disabled>Save roster</button>
+        </div>
+        <div id="rosterSaveMessage" class="system-message"></div>
+      </div>
+
       <div class="card">
         <h2>Available Players</h2>
         <div id="playerPool" class="pool-grid"></div>
@@ -154,6 +195,10 @@
 
     const TEAM_NAMES = ["NPS", "KCN", "BK"];
     let ALL_PLAYERS = {{ draft_players | tojson }};
+    const DRAFT_SEASONS = {{ draft_seasons | tojson }};
+    let latestSeedResult = null;
+    let lastDraftState = null;
+    let seedMapPrefillDone = false;
 
     const TEAM_CAPTAINS = {
       NPS: "Minwoo Cho",
@@ -202,6 +247,15 @@
     const teamsGrid = document.getElementById("teamsGrid");
     const playerPool = document.getElementById("playerPool");
     const draftPoolNote = document.getElementById("draftPoolNote");
+    const saveRosterCard = document.getElementById("saveRosterCard");
+    const rosterSeason = document.getElementById("rosterSeason");
+    const seedTeam1 = document.getElementById("seedTeam1");
+    const seedTeam2 = document.getElementById("seedTeam2");
+    const seedTeam3 = document.getElementById("seedTeam3");
+    const seedTeamSelects = [seedTeam1, seedTeam2, seedTeam3];
+    const rosterPreview = document.getElementById("rosterPreview");
+    const saveRosterBtn = document.getElementById("saveRosterBtn");
+    const rosterSaveMessage = document.getElementById("rosterSaveMessage");
     let draftStarted = false;
 
     function escapeHtml(value) {
@@ -251,6 +305,139 @@
         return;
       }
       draftPoolNote.textContent = `${count} active player${count === 1 ? "" : "s"} in the draft pool (3 teams).`;
+    }
+
+    function initSeasonSelect() {
+      const previous = rosterSeason.value;
+      rosterSeason.innerHTML = '<option value="">Select season</option>';
+      (DRAFT_SEASONS || []).forEach(row => {
+        const option = document.createElement("option");
+        option.value = row.season;
+        const status = row.status_label || row.status || "";
+        option.textContent = status ? `${row.season} (${status})` : row.season;
+        rosterSeason.appendChild(option);
+      });
+      if (previous && [...rosterSeason.options].some(opt => opt.value === previous)) {
+        rosterSeason.value = previous;
+      }
+      if (!(DRAFT_SEASONS || []).length) {
+        rosterSeason.disabled = true;
+      }
+    }
+
+    function initSeedTeamSelects(prefillFromResult = false) {
+      const previous = seedTeamSelects.map(select => select.value);
+      seedTeamSelects.forEach(select => {
+        select.innerHTML = '<option value="">Select team</option>';
+        TEAM_NAMES.forEach(team => {
+          const option = document.createElement("option");
+          option.value = team;
+          option.textContent = team;
+          select.appendChild(option);
+        });
+      });
+
+      if (prefillFromResult && latestSeedResult?.rows?.length) {
+        latestSeedResult.rows.forEach((row, index) => {
+          if (seedTeamSelects[index] && TEAM_NAMES.includes(row.team)) {
+            seedTeamSelects[index].value = row.team;
+          }
+        });
+        seedMapPrefillDone = true;
+        return;
+      }
+
+      previous.forEach((value, index) => {
+        if (value && TEAM_NAMES.includes(value) && seedTeamSelects[index]) {
+          seedTeamSelects[index].value = value;
+        }
+      });
+    }
+
+    function currentSeedTeamMap() {
+      return {
+        "1": seedTeam1.value,
+        "2": seedTeam2.value,
+        "3": seedTeam3.value
+      };
+    }
+
+    function rosterMappingReady() {
+      const season = rosterSeason.value;
+      const mapping = currentSeedTeamMap();
+      const teams = Object.values(mapping);
+      if (!season || teams.some(team => !team)) return false;
+      return new Set(teams).size === TEAM_NAMES.length;
+    }
+
+    function updateRosterPreview(state) {
+      const season = rosterSeason.value;
+      const mapping = currentSeedTeamMap();
+      const teams = state?.teams || {};
+
+      if (!state?.completed) {
+        rosterPreview.innerHTML = '<div class="muted">Finish the draft to preview roster rows.</div>';
+        saveRosterBtn.disabled = true;
+        return;
+      }
+
+      if (!(DRAFT_SEASONS || []).length) {
+        rosterPreview.innerHTML = '<div class="muted">No seasons found. Add a season on the Seasons page first.</div>';
+        saveRosterBtn.disabled = true;
+        return;
+      }
+
+      if (!rosterMappingReady()) {
+        rosterPreview.innerHTML = '<div class="muted">Choose a season and map each seed to a different team.</div>';
+        saveRosterBtn.disabled = !!state?.roster_saved;
+        return;
+      }
+
+      let html = `<div><strong>Season:</strong> ${escapeHtml(season)}</div>`;
+      html += '<div class="roster-preview-grid">';
+      [1, 2, 3].forEach(seed => {
+        const franchise = mapping[String(seed)];
+        const members = teams[String(seed)] || [];
+        html += `
+          <div class="roster-preview-team">
+            <h3>Seed ${seed} → ${escapeHtml(franchise)}</h3>
+            <ol>
+              ${members.length
+                ? members.map(member => `<li>${escapeHtml(member.display_name || "")}</li>`).join("")
+                : '<li class="muted">No players</li>'}
+            </ol>
+          </div>
+        `;
+      });
+      html += "</div>";
+      const total = [1, 2, 3].reduce((sum, seed) => sum + ((teams[String(seed)] || []).length), 0);
+      html += `<div class="muted" style="margin-top: 8px;">${total} players will be written to team_members.</div>`;
+      rosterPreview.innerHTML = html;
+      saveRosterBtn.disabled = !!state?.roster_saved;
+    }
+
+    function renderSaveRosterPanel(state) {
+      const completed = !!state?.completed;
+      saveRosterCard.hidden = !completed;
+      if (!completed) {
+        rosterSaveMessage.textContent = "";
+        seedMapPrefillDone = false;
+        return;
+      }
+
+      if (!seedMapPrefillDone) {
+        initSeedTeamSelects(true);
+      }
+
+      if (state?.roster_saved) {
+        const season = state.roster_saved_season || "that season";
+        rosterSaveMessage.textContent = `Saved to ${season}. Reset the draft to save again.`;
+        saveRosterBtn.disabled = true;
+      } else if (!rosterSaveMessage.textContent.includes("Saved")) {
+        rosterSaveMessage.textContent = "";
+      }
+
+      updateRosterPreview(state);
     }
 
     function renderSeedProbabilities(items) {
@@ -477,6 +664,8 @@
 
       undoDraftBtn.disabled = !lastPick;
       draftMessage.textContent = state?.message || "";
+      lastDraftState = state;
+      renderSaveRosterPanel(state);
     }
 
     runBtn.addEventListener("click", () => {
@@ -558,7 +747,27 @@
       socket.emit("reset_draft");
     });
 
+    function onRosterFormChange() {
+      updateRosterPreview(lastDraftState);
+    }
+
+    rosterSeason.addEventListener("change", onRosterFormChange);
+    seedTeamSelects.forEach(select => {
+      select.addEventListener("change", onRosterFormChange);
+    });
+
+    saveRosterBtn.addEventListener("click", () => {
+      if (!rosterMappingReady() || saveRosterBtn.disabled) return;
+      rosterSaveMessage.textContent = "Saving roster...";
+      saveRosterBtn.disabled = true;
+      socket.emit("save_draft_roster", {
+        season: rosterSeason.value,
+        seed_teams: currentSeedTeamMap()
+      });
+    });
+
     socket.on("state_init", (state) => {
+      latestSeedResult = state.latest_result || null;
       renderSeasonInputs(state.season_results);
       renderManualProbabilityInputs(state.team_percentages);
       renderSeedProbabilities(state.seed_probabilities);
@@ -577,10 +786,14 @@
     socket.on("seed_result_batch", (data) => {
       const results = data.results;
       if (results.length > 0) {
-        const latestSeedResult = results[results.length - 1];
+        latestSeedResult = results[results.length - 1];
         renderResult(latestSeedResult);
         if (!draftStarted) {
           applyDefaultCaptains(latestSeedResult);
+        }
+        if (lastDraftState?.completed && !lastDraftState?.roster_saved && !seedMapPrefillDone) {
+          initSeedTeamSelects(true);
+          updateRosterPreview(lastDraftState);
         }
       }
       systemMessage.textContent = "Seed picking completed.";
@@ -607,6 +820,12 @@
 
     socket.on("draft_message", (data) => {
       draftMessage.textContent = data.message;
+      if (saveRosterCard && !saveRosterCard.hidden) {
+        rosterSaveMessage.textContent = data.message || "";
+        if (lastDraftState && !lastDraftState.roster_saved) {
+          saveRosterBtn.disabled = !rosterMappingReady();
+        }
+      }
     });
 
     document.querySelectorAll(".tab-btn").forEach(button => {
@@ -619,6 +838,8 @@
     });
 
     initCaptainSelects(ALL_PLAYERS);
+    initSeasonSelect();
+    initSeedTeamSelects(false);
     renderDraft({
       started: false,
       completed: false,
@@ -629,6 +850,8 @@
       current_pick_index: 0,
       current_seed: null,
       last_pick: null,
+      roster_saved: false,
+      roster_saved_season: null,
       message: ALL_PLAYERS.length
         ? "Select 3 captains and start the draft."
         : "No active players. Mark league members active on the Players page first."
