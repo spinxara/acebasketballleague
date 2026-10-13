@@ -58,6 +58,7 @@ Visiting `/draft` redirects to `/admin/draft`.
     ├── players_drop_display_name_unique.sql  # Drop unique name constraint if present
     ├── players_rename_guest_to_non_member.sql
     ├── team_members_add_player_id.sql        # Link team_members to players.id
+    ├── team_members_player_id_unique.sql     # Unique on (season, player_id), not name
     ├── player_stats_add_player_id.sql        # Link stats / played-games to players.id
     └── players_seed_non_members.sql          # Seed (NM) non-members and re-link
 ```
@@ -212,8 +213,9 @@ To add the league members table and link season rosters / stats:
 2. If `players` already had a unique name constraint, run `supabase/players_drop_display_name_unique.sql`.
 3. If `players` still has a `guest` column, run `supabase/players_rename_guest_to_non_member.sql`.
 4. Run `supabase/team_members_add_player_id.sql` (adds nullable `player_id` on `team_members`).
-5. Run `supabase/player_stats_add_player_id.sql` (adds nullable `player_id` on `player_played_games`, `player_stats_by_season`, and `player_stats_total`; backfills by name match).
-6. If unmatched `(NM)` names remain, run `supabase/players_seed_non_members.sql` (inserts those display names as `non_member = true`, then re-backfills).
+5. Run `supabase/team_members_player_id_unique.sql` (replaces name-based `uq_team_members` with unique `(season, player_id)` so duplicate display names can share a season).
+6. Run `supabase/player_stats_add_player_id.sql` (adds nullable `player_id` on `player_played_games`, `player_stats_by_season`, and `player_stats_total`; backfills by name match).
+7. If unmatched `(NM)` names remain, run `supabase/players_seed_non_members.sql` (inserts those display names as `non_member = true`, then re-backfills).
 
 For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 

@@ -1,0 +1,263 @@
+ACE Basketball League — project report for a resume update
+Prepared 13 October 2026
+For: Dae Young Roh
+Suggested project name: ACE Basketball League site
+
+This file is a factual brief. It is not part of the application. Do not commit it if you want to keep it out of the repository.
+
+
+1. Project overview
+
+ACE Basketball League is a private Sunday league that plays in Glendale. Members and visitors read season results, player totals, head-to-head matchups, rules, and photos. Captains and the maintainer use a password-protected admin area to run the preseason draft and maintain players, seasons, and rosters.
+
+Dae Young actively started the project in April 2025. He designed the data structure himself. An LLM helped write the original Google Apps Script that syncs a guidebook spreadsheet into Supabase. He has been entering game and tournament data through that sheet. Moving that entry onto the website is the next step and is not built yet.
+
+In September–October 2026 the work expanded into a Flask web application. The public site publishes the Supabase tables. Admin pages manage players, seasons, the draft, and the roster. Captains have already run a real draft on the deployed Render service.
+
+One-sentence summary:
+A private league stats system designed in April 2025, with an LLM-written Apps Script sync into Supabase, plus a Flask site on Render Starter where captains have already run a live draft.
+
+Correct the old LinkedIn start date. Use April 2025, not January 2025.
+
+
+2. Features and implementation status
+
+Implemented means the route exists in the application on main.
+Deployed means the public site is on Render.
+Used means there is direct confirmation that someone relied on it.
+
+Public home, about, rules (version 3.1), sponsors, sitemap, and robots rules
+  Code: implemented
+  Use: deployed. Homepage returned HTTP 200 on 13 October 2026 from a Render Python process.
+
+Season results, member stats, player stats by season, and team matchups
+  Code: implemented as reads from Supabase
+  Use: deployed. A tournament-title count was checked on the member-stats page on 28 September 2026.
+
+Team moments gallery, plus admin upload and delete with image resizing
+  Code: implemented
+  Use: in the deployed codebase. Photo counts were not measured.
+
+Weighted seed lottery, three-team snake draft, one-level undo, reset, and live shared state
+  Code: implemented
+  Use: used. A real draft has already been run on the Render service.
+
+Save a finished draft into team_members, then edit that roster
+  Code: implemented 12–13 October 2026
+  Use: pushed to origin/main. The draft room itself has been used live. This later roster-edit flow was not separately confirmed in production.
+
+Players admin, seasons admin, and a captain password that can open only the draft room
+  Code: implemented 12–13 October 2026
+  Use: pushed. Production use of these newer pages was not confirmed by logging in.
+
+Member-stat rebuild via refresh_player_totals
+  Code: called on each Member Stats page load
+  Use: used. It skipped Jul–Sep 2026 until refresh_all_stats was run. The function bodies are not in the repository.
+
+Admin dashboard, games entry, and tournament entry
+  Code: placeholder pages
+  Use: not a working workflow. Website entry is planned. Data entry today is still the guidebook sheet.
+
+Google Sheets guidebook and Apps Script sync
+  Code: the script is not in this repository
+  Use: this is how game and tournament data have been entered. Dae Young designed the structure. An LLM wrote the script. Replacing this with website forms is planned.
+
+There is no per-game box score form, no player-facing account, and no analytics dashboard beyond sortable HTML tables. advanced_random_order.py and app_v1.00.py are unused leftovers. The application has no AI feature.
+
+
+3. Technical architecture and design
+
+Frontend
+  Server-rendered Jinja templates and one CSS file. Small browser scripts sort tables and run the moments gallery and draft room. There is no separate frontend framework.
+
+Backend
+  One Flask application, app.py (about 2,800 lines), with Flask-SocketIO. Supabase is called with urllib against the REST API. There is no local database and no automated test suite in the repository.
+
+Database
+  Supabase Postgres. The site reads seasons, player_stats_total, player_stats_by_season, team_matchup_strength, players, team_members, and team_moments. Photos go to a public Supabase Storage bucket. Derived totals are rebuilt by SQL functions that live in Supabase, not in git.
+
+Authentication
+  Two shared passwords, ADMIN_PASSWORD and CAPTAIN_PASSWORD, checked with an HMAC compare and stored in a Flask session cookie (7 days). Failed logins are limited to 5 per IP in 10 minutes, in process memory. Captains are redirected away from every admin path except the draft room. Socket events require that same session.
+
+Database authorization
+  SQL files in supabase/ open row-level writes to the API role (using true). The password gate is in Flask. Anyone who has the API key can write those tables without the admin password. See supabase/seasons_admin_policies.sql and supabase/team_members_admin_policies.sql.
+
+Deployment
+  Render web service on the Starter compute plan: 0.5 CPU, 512 MB RAM. Paid Render instances stay running and do not spin down the way the free plan does. Python 3.12.8, bound to PORT. Custom domain acebasketballteam.com, registered at Namecheap through 21 September 2027. The app redirects www to the apex host.
+  On 13 October 2026 at 12:14 PT the homepage returned HTTP 200. The origin header was Werkzeug/3.1.9 Python/3.12.8, with Cloudflare in front, which is consistent with Render.
+  Plan specs are from Render's compute-plan documentation (legacy name "starter" = plan id 0.5c-512mb). A deploy or restart still clears the in-memory draft.
+
+How data moves
+  1. Game and tournament rows are entered in the guidebook sheet. The sheet syncs them into Supabase and runs refresh_all_stats. That script is not in this repository.
+  2. Member Stats calls refresh_player_totals, then reads player_stats_total. A failed refresh still shows the last stored totals.
+  3. Draft and seed state live in one in-memory object and are broadcast with Socket.IO. A restart clears that room. History is capped at 100 seed runs.
+  4. After a draft, an admin picks the season and the seed-to-team mapping and explicitly saves. That inserts team_members. The Roster page can then move, add, remove, or clear players for that season.
+
+What remains in use
+  Supabase is still the database.
+  The guidebook sheet is still the game and tournament entry path.
+  Apps Script is still part of that sheet workflow. It is absent from this repo, which does not mean it was retired.
+  The public website replaced the spreadsheet as the place people read stats.
+  The Games and Tournament admin pages are placeholders. Their own notes say the future job is to insert game_results, player_played_games, and tournament_matches.
+
+Documented technical decisions
+  Render would not boot with eventlet. The service was switched to Socket.IO's threading mode so it could bind to PORT. Commit 8c4548f, 21 September 2026.
+  Seed odds are calculated, not simulated. Losing teams get a higher chance at the first seed, blended 80 percent toward loss share and 20 percent toward equal odds. A recursive walk then computes the exact chance of each seed. See PROBABILITY_BLEND and build_seed_probability_matrix in app.py.
+  Names are not identities. players.id is a UUID. Duplicate display names are allowed. The draft label uses the comment field when two active players share a name. Legacy stat tables were given a nullable player_id and backfilled by exact name match. Unmatched "(NM)" names were seeded as non-members. Non-members are excluded from the draft pool. See supabase/players.sql and supabase/player_stats_add_player_id.sql.
+  Roster save is manual so a bad draft does not write itself into the season. The admin chooses the season and the seed-to-team mapping.
+  Totals should rebuild when data is saved, not on every page view. The page-load refresh both did extra work on a read and skipped a season. The full rebuild, refresh_all_stats, belongs at the end of the sheet import. The Member Stats page still calls the narrower function.
+  The domain outage on 12 October 2026 was not an app failure. Namecheap had replaced the nameservers after an unverified WHOIS contact. The homepage was back on 13 October 2026.
+
+
+4. Role and contributions
+
+Dae Young Roh designed the structure, specified the workflows, reviewed the behavior, and operates the deployed service. He did not hand-write the entire codebase.
+
+April 2025 stats system
+  He designed the data structure.
+  An LLM helped write the original Apps Script.
+  The script source was not available in this repository, so the report cannot describe its procedures line by line.
+
+September–October 2026 web application
+  Git history has one human author: Dae Young Roh, 21 commits from 21 September through 13 October 2026.
+  The README lists him as the maintainer.
+  No other human contributor appears in this repo.
+  Project chats show him setting the product rules and having Cursor agents implement them: whether a players table was needed, season statuses, a draft pool of active members, three fixed teams, roster trades after the draft, a second captain password, and the admin menu groups.
+  Four commits, including the first Render deploy, include a Co-authored-by: Cursor line.
+  That is LLM-assisted development. The application does not call a model.
+
+External services
+  Supabase hosts the database and photo storage.
+  Render hosts the web process.
+  Namecheap holds the domain.
+  Cloudflare appears in front of the origin, consistent with Render.
+  Pillow does the image processing.
+
+Do not write "sole developer who hand-wrote the platform."
+Do write that he designed the system, directed the implementation, and shipped and operates the site.
+The SQL function bodies for refresh_all_stats and refresh_player_totals were not in the repository, so this report does not claim he wrote those functions by hand.
+
+
+5. Timeline, usage, and outcomes
+
+April 2025
+  Active start, per Dae Young. He designed the structure and used an LLM to write the Apps Script.
+
+6 May 2025 – 20 July 2026
+  created_at range on exported team_members rows. Consistent with an April 2025 start.
+
+Jul–Sep 2023 through Jul–Sep 2026
+  Season labels in the roster export. This dates stored league history, not the start of the software.
+
+12 October 2026 local export of team_members (gitignored file team_members.csv)
+  13 seasons
+  234 roster rows
+  34 distinct player names
+  This is a snapshot, not a live query from later the same week.
+  Older team codes in that file include NWO, ZOO, MMT, KARU, CKD, and UBRG, as well as NPS, KCN, and BK. The draft room only knows the current three teams: NPS, KCN, and BK.
+
+Season row counts in that export
+  Jul–Sep 2023     18
+  Oct–Dec 2023     18
+  Jan–Mar 2024     17
+  Apr–Jun 2024     16
+  Jul–Sep 2024     17
+  Oct–Dec 2024     16
+  Jan–Mar 2025     18
+  Apr–Jun 2025     18
+  Jul–Sep 2025     18
+  Oct–Dec 2025     18
+  Jan–Mar 2026     21
+  Apr–Jun 2026     18
+  Jul–Sep 2026     21
+
+21–23 September 2026
+  Repository created, Render deploy, public stats, moments, rules, SEO, mobile layout.
+
+28 September 2026
+  A tournament title stayed at 0 because refresh_player_totals skipped the newest season. Running refresh_all_stats fixed that count.
+
+6 October 2026
+  Domain nameservers were replaced after a WHOIS check. Diagnosed on 12 October.
+
+12–13 October 2026
+  Players, seasons, database-backed draft pool, roster save, captain login, roster edits, and grouped admin navigation.
+  The custom domain was down on 12 October. The homepage was back on 13 October.
+  Captains have used the draft room on this Render service. The report does not have a count of how many drafts.
+
+There is no website traffic number and no audience count beyond the roster export. Do not turn 34 player names into a traffic or user-account figure.
+
+Current status
+  The public site is deployed on Render Starter and was responding on 13 October 2026.
+  The draft room has been used live on that service.
+  Game and tournament entry are still the guidebook sheet.
+  Do not describe the whole product as a finished operations platform.
+  Do not describe stats aggregation as real-time. Real-time applies only to the in-memory draft room while that process stays up.
+
+
+6. Resume-ready material
+
+Project description
+
+Designed the data model and season workflow for ACE Basketball League, a private Sunday league, starting in April 2025. An LLM implemented the Google Apps Script sync and, later, most of the Flask application from that design. The Supabase database holds 13 seasons, 234 roster rows, and 34 player names. The public site runs on a Render Starter instance (0.5 CPU, 512 MB, always on) at acebasketballteam.com and publishes season, player, and matchup stats. Captains have already used the live draft room on that service. Game and tournament entry still go through the guidebook sheet; moving that entry onto the website is planned and not built yet.
+
+Bullets for a Product Engineer — Backend & Automation role
+
+- Designed a Supabase model and a Google Sheets guidebook for a 13-season league (234 roster rows, 34 player names), and used an LLM to implement the Apps Script that syncs game data and rebuilds totals.
+- Directed a Flask and Socket.IO app on Render Starter that serves those stats. Captains have run the weighted seed and shared snake draft live on that service, then saved the confirmed roster into the season table.
+- Kept game and tournament entry on the sheet while website forms were still unbuilt, and linked a new player id onto the older name-based stat tables so duplicate names could stay in the draft.
+
+Suggested skills to attach
+  Python, Flask, Supabase, PostgreSQL, SQL, Google Apps Script, WebSockets, JavaScript, HTML/CSS
+
+Interview examples
+
+Derived totals
+  The member-stats page rebuilt totals on every visit, and the function it called skipped the newest season. The full rebuild already lived at the end of the sheet import. This is a story about derived data, about the write owning the refresh, and about a read-path fallback hiding a bug.
+
+Player identity
+  Display names collided, including two active people with the same name. Identity moved to a UUID, the draft UI showed the comment, and old stat rows were linked by name with a leftover report for mismatches.
+
+Render boot
+  The service failed to boot under eventlet. Switching Socket.IO to threading mode fixed the boot. The follow-on constraint is that draft state sits in that one process. Starter stays up while the service is running, and a deploy or restart still clears an in-progress draft. A real draft has already been run on that service.
+
+Database access
+  Database policies allow the API key to write. The admin password is only enforced in Flask. Describe it as a short-term choice for a single shared key, and as something to tighten before treating the admin API as a public integration.
+
+Words that are supported
+  Designed, specified, directed, shipped, operates
+  Live draft on the deployed service
+  Always-on Starter instance
+  13 seasons, 234 roster rows, 34 player names, as of the 12 October 2026 export
+
+Words to avoid
+  Hand-wrote the entire codebase
+  Sole implementer of every line
+  Scalable, high-performance, or production-ready as a description of the whole platform
+  Real-time stats aggregation
+  Launched game-entry or tournament-entry product
+  January 2025 as the start date
+  An AI feature inside the application
+
+
+Sources
+
+Repository: github.com/spinxara/acebasketballleague, main, commits 21 September 2026 through 13 October 2026
+README.md, app.py, supabase/*.sql
+Local export: team_members.csv on 12 October 2026 (gitignored)
+Homepage check: https://acebasketballteam.com/ returned HTTP 200 on 13 October 2026
+Render compute plans: https://render.com/docs/compute-plans
+Dae Young's clarifications on 13 October 2026:
+  Active start was April 2025.
+  He designed the structure. An LLM helped write the original Apps Script.
+  The guidebook sheet is still the data-entry path. Website entry is planned soon.
+  A real draft has already been used on the Render service.
+  The service is on the Starter plan.
+  Volume numbers may be included. This is a private project.
+  He did not hand-write the entire codebase.
+
+Still not verified from source
+  The Apps Script file itself
+  The SQL bodies of refresh_all_stats and refresh_player_totals
+  How many live drafts have been run
+  Website traffic

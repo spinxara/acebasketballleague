@@ -716,6 +716,14 @@ def roster_form_error_message(exc):
             "Supabase blocked the write. Run supabase/team_members_admin_policies.sql "
             "in the SQL editor, then try again."
         )
+    if "uq_team_members" in message.lower() or (
+        "duplicate key" in message.lower() and "team_members" in message.lower()
+    ):
+        return (
+            "That player is already on this season roster (unique on season + player_id). "
+            "If you still see a name-based conflict, run "
+            "supabase/team_members_player_id_unique.sql in the SQL editor."
+        )
     if "team_members" in message.lower() and "not found" in message.lower():
         return "The team_members table is not set up yet."
     return message
@@ -2230,13 +2238,6 @@ def admin_roster_add():
 
         existing = load_team_members(season)
         if any(row.get("player_id") == player_id for row in existing):
-            flash(f"{player['display_name']} is already on this season roster.", "error")
-            return redirect(url_for("admin_roster", season=season))
-        if any(
-            (row.get("player") or "").strip().lower()
-            == player["display_name"].strip().lower()
-            for row in existing
-        ):
             flash(f"{player['display_name']} is already on this season roster.", "error")
             return redirect(url_for("admin_roster", season=season))
 
