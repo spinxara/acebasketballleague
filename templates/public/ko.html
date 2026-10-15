@@ -1,0 +1,111 @@
+{% extends "public/base.html" %}
+
+{% block html_lang %}ko{% endblock %}
+{% block og_locale %}ko_KR{% endblock %}
+{% block body_class %}public-body landing-page{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+
+{% block og_locale_alternate %}
+  <meta property="og:locale:alternate" content="en_US" />
+{% endblock %}
+
+{% block title %}ACE Basketball League | LA 한인 농구 모임{% endblock %}
+{% block description %}로스앤젤레스 글렌데일에서 매주 일요일 모이는 한인 농구 모임 ACE입니다. Academy USA 실내 코트에서 시즌 리그와 토너먼트를 진행합니다.{% endblock %}
+
+{% block content %}
+  <section class="landing-hero" aria-label="ACE Basketball League">
+    <div class="landing-hero-glow" aria-hidden="true"></div>
+    <div class="landing-hero-court" aria-hidden="true"></div>
+    <div class="landing-hero-inner">
+      <img
+        class="landing-hero-logo"
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt=""
+        width="120"
+        height="120"
+      />
+      <p class="landing-brand">ACE BASKETBALL LEAGUE</p>
+      <h1 class="landing-headline">LA 한인 농구 모임 ACE</h1>
+      <p class="landing-support">
+        매주 일요일, 글렌데일 실내 코트에서 농구를 합니다.
+        시즌마다 드래프트로 팀을 구성하고 정규 리그와 토너먼트를 진행합니다.
+      </p>
+      <div class="landing-cta-group">
+        <a class="landing-cta landing-cta-primary" href="{{ url_for('about') }}">소개</a>
+        <a class="landing-cta landing-cta-secondary" href="{{ url_for('home') }}">기록 보기</a>
+        <a class="landing-cta landing-cta-ghost" href="{{ url_for('landing') }}">English</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="landing-below">
+    <section class="landing-section">
+      <h2>시간 및 장소</h2>
+      <p>매주 일요일 오전 9시 – 낮 12시</p>
+      <p>
+        Academy USA<br />
+        1219 Los Angeles St<br />
+        Glendale, CA 91204
+      </p>
+      <p>
+        <a
+          class="landing-text-link"
+          href="https://maps.app.goo.gl/TJwoDe8SBM69MQQW9"
+          target="_blank"
+          rel="noopener noreferrer"
+        >지도 보기</a>
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>리그 소개</h2>
+      <p>
+        ACE는 로스앤젤레스 지역의 한인 커뮤니티를 중심으로 한 농구 모임입니다.
+        한국인이 아닌 멤버도 함께하고 있으며, 매주 같은 시간에 모여 경기를 합니다.
+      </p>
+      <p>
+        시즌이 시작되면 드래프트로 팀을 나눕니다.
+        이후 정규 리그 경기를 치르고, 시즌 말에는 챔피언십 토너먼트를 진행합니다.
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>기록 및 규칙</h2>
+      <p>
+        시즌 결과, 선수 기록, 경기 규칙, 활동 사진은 사이트에서 확인할 수 있습니다.
+      </p>
+      <p>
+        <a class="landing-text-link" href="{{ url_for('home') }}">기록 홈</a>
+        ·
+        <a class="landing-text-link" href="{{ url_for('season_results') }}">시즌 결과</a>
+        ·
+        <a class="landing-text-link" href="{{ url_for('team_moments') }}">활동 사진</a>
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>참여 및 문의</h2>
+      <p>
+        모임이나 일정에 대해 궁금한 점이 있으면 Instagram 또는 아래로 문의해 주세요.
+      </p>
+      <p>
+        Instagram:
+        <a
+          class="landing-text-link"
+          href="{{ instagram_url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >@la_ace_basketball</a>
+      </p>
+      <p>
+        노대영
+        (카카오: {{ maintainer_kakao }}, 이메일:
+        <span
+          class="email-address"
+          data-email-user="{{ maintainer_email_user }}"
+          data-email-domain="{{ maintainer_email_domain }}"
+        >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
+      </p>
+    </section>
+  </div>
+{% endblock %}

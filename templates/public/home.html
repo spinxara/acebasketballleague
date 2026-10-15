@@ -1,23 +1,22 @@
 {% extends "public/base.html" %}
 
-{% block title %}Home · ACE Basketball League Guidebook & Stats{% endblock %}
-{% block description %}Official page for ACE Basketball League in Los Angeles, with season results, player stats, team matchups, rules, and photos.{% endblock %}
+{% block title %}Guidebook · ACE Basketball League{% endblock %}
+{% block description %}ACE Basketball League guidebook: season results, player stats, team matchups, rules, and photos for the Los Angeles Sunday league.{% endblock %}
 
 {% block content %}
   <div class="home-grid">
     <section class="card home-welcome">
-      <div class="kicker">Welcome</div>
-      <h1>Welcome to our official team page</h1>
+      <div class="kicker">Guidebook</div>
+      <h1>League guidebook &amp; stats</h1>
       <p class="lead">
-        This is the official page for ACE Basketball League in Los Angeles.
+        Track seasons, game results, player stats, schedules, and awards for ACE Basketball League.
       </p>
-      <p class="lead">
-        This site is designed to help us stay organized and track everything from
-        our seasons—game results, player stats, schedules, and awards.
-      </p>
-      <p class="lead">
-        Whether you're checking your win rate, seeing who's made the most progress,
-        or just staying in the loop, this is your go-to resource.
+      <p>
+        <a class="rules-link" href="{{ url_for('landing') }}">Back to landing</a>
+        ·
+        <a class="rules-link" href="{{ url_for('korean_landing') }}">한국어 소개</a>
+        ·
+        <a class="rules-link" href="{{ url_for('about') }}">About the league</a>
       </p>
       <p class="note">Stats are generally updated every 2 regular season weeks.</p>
     </section>
@@ -58,7 +57,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="currentColor"
-                d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm10 2H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm-5 3.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 14.5 12 2.5 2.5 0 0 0 12 9.5zm5.2-3.3a1.1 1.1 0 1 1-1.1 1.1 1.1 1.1 0 0 1 1.1-1.1z"
+                d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm10 2H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm-5 3.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 14.5 12 2.5 2.5 0 0 0 12 9.5zm5.2-3.3a1.1 1.1 0 1 1-1.1 1.1 1.1 0 0 1 1.1-1.1z"
               />
             </svg>
             Instagram

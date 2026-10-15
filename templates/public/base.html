@@ -1,15 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{% block html_lang %}en{% endblock %}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}ACE Basketball League Guidebook & Stats{% endblock %}</title>
   <meta name="description" content="{% block description %}Official page for ACE Basketball League in Los Angeles, with season results, player stats, team matchups, rules, and photos.{% endblock %}" />
   <link rel="canonical" href="{{ canonical_url }}" />
+  {% if hreflang_alternates %}
+    {% for alt in hreflang_alternates %}
+      <link rel="alternate" hreflang="{{ alt.lang }}" href="{{ alt.href }}" />
+    {% endfor %}
+  {% endif %}
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="ACE Basketball League" />
-  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale" content="{% block og_locale %}en_US{% endblock %}" />
+  {% block og_locale_alternate %}{% endblock %}
   <meta property="og:title" content="{{ self.title() }}" />
   <meta property="og:description" content="{{ self.description() }}" />
   <meta property="og:url" content="{{ canonical_url }}" />
@@ -20,21 +26,29 @@
   <meta name="twitter:image" content="{{ logo_url }}" />
   <meta name="author" content="{{ maintainer_name }}" />
   <script type="application/ld+json">{{ organization_schema | tojson }}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
-<body class="public-body">
+<body class="{% block body_class %}public-body{% endblock %}">
   <header class="site-header">
-    <div class="brand-row">
-      <img
-        class="logo-mark"
-        src="{{ url_for('static', filename='logo.png') }}"
-        alt="ACE Basketball League"
-      />
-      <div class="brand-copy">
-        <p class="brand-title">ACE Basketball League Guidebook & Stats</p>
-        <p class="meta-line">Stats Last Updated: {{ last_updated }}</p>
+    <a class="brand-link" href="{{ url_for('landing') }}">
+      <div class="brand-row">
+        <img
+          class="logo-mark"
+          src="{{ url_for('static', filename='logo.png') }}"
+          alt="ACE Basketball League"
+        />
+        <div class="brand-copy">
+          <p class="brand-title">ACE Basketball League Guidebook & Stats</p>
+          <p class="meta-line">Stats Last Updated: {{ last_updated }}</p>
+        </div>
       </div>
-    </div>
+    </a>
     <nav class="public-nav" aria-label="Public guidebook">
       {% for item in public_nav %}
         {% if item.children %}
@@ -90,7 +104,7 @@
     {% endif %}
   </header>
 
-  <main class="container">
+  <main class="{% block main_class %}container{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
@@ -109,7 +123,9 @@
       </p>
     {% endif %}
     <p class="footer-maintainer">
-      Maintainer: {{ maintainer_name }}(<span
+      {{ maintainer_name }}
+      (Kakao: {{ maintainer_kakao }}, email:
+      <span
         class="email-address"
         data-email-user="{{ maintainer_email_user }}"
         data-email-domain="{{ maintainer_email_domain }}"
@@ -120,6 +136,7 @@
       <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer">YouTube</a>
       <a href="{{ instagram_url }}" target="_blank" rel="noopener noreferrer">Instagram</a>
       <a href="{{ url_for('league_rules') }}">Game Rules</a>
+      <a href="{{ url_for('korean_landing') }}">한국어</a>
       <a href="{{ url_for('admin_dashboard') }}" rel="nofollow">Admin</a>
     </div>
   </footer>

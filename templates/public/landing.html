@@ -1,0 +1,99 @@
+{% extends "public/base.html" %}
+
+{% block body_class %}public-body landing-page{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+
+{% block og_locale_alternate %}
+  <meta property="og:locale:alternate" content="ko_KR" />
+{% endblock %}
+
+{% block title %}ACE Basketball League · LA Korean Community Sunday League{% endblock %}
+{% block description %}ACE Basketball League is a Los Angeles Korean community basketball league. Sundays 9 AM–12 PM at Academy USA in Glendale.{% endblock %}
+
+{% block content %}
+  <section class="landing-hero" aria-label="ACE Basketball League">
+    <div class="landing-hero-glow" aria-hidden="true"></div>
+    <div class="landing-hero-court" aria-hidden="true"></div>
+    <div class="landing-hero-inner">
+      <img
+        class="landing-hero-logo"
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt=""
+        width="120"
+        height="120"
+      />
+      <p class="landing-brand">ACE Basketball League</p>
+      <h1 class="landing-headline">Sunday basketball in Los Angeles</h1>
+      <p class="landing-support">
+        A Korean community league in Glendale—drafted teams, real seasons, weekly games.
+      </p>
+      <div class="landing-cta-group">
+        <a class="landing-cta landing-cta-primary" href="{{ url_for('about') }}">About the league</a>
+        <a class="landing-cta landing-cta-secondary" href="{{ url_for('home') }}">Open guidebook</a>
+        <a class="landing-cta landing-cta-ghost" href="{{ url_for('korean_landing') }}">한국어</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="landing-below">
+    <section class="landing-section">
+      <h2>When &amp; where</h2>
+      <p>Every Sunday, 9:00 AM – 12:00 PM</p>
+      <p>
+        Academy USA<br />
+        1219 Los Angeles St<br />
+        Glendale, CA 91204
+      </p>
+      <p>
+        <a
+          class="landing-text-link"
+          href="https://maps.app.goo.gl/TJwoDe8SBM69MQQW9"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Open in Google Maps</a>
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>How the season works</h2>
+      <p>
+        Captain-led drafts build balanced teams. Then regular-season games and a championship
+        tournament—plus shared records so you can follow wins, improvement, and past seasons.
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>Guidebook</h2>
+      <p>Results, player stats, rules, and photos live in the league guidebook.</p>
+      <p>
+        <a class="landing-text-link" href="{{ url_for('home') }}">Go to guidebook</a>
+        ·
+        <a class="landing-text-link" href="{{ url_for('season_results') }}">Season results</a>
+        ·
+        <a class="landing-text-link" href="{{ url_for('team_moments') }}">Moments</a>
+      </p>
+    </section>
+
+    <section class="landing-section">
+      <h2>Contact</h2>
+      <p>
+        Instagram:
+        <a
+          class="landing-text-link"
+          href="{{ instagram_url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >@la_ace_basketball</a>
+      </p>
+      <p>
+        {{ maintainer_name }}
+        (Kakao: {{ maintainer_kakao }}, email:
+        <span
+          class="email-address"
+          data-email-user="{{ maintainer_email_user }}"
+          data-email-domain="{{ maintainer_email_domain }}"
+        >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
+      </p>
+    </section>
+  </div>
+{% endblock %}

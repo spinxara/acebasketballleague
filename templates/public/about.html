@@ -30,7 +30,7 @@
     <p>
       <a
         class="rules-link"
-        href="https://www.google.com/maps/search/?api=1&amp;query=1219+Los+Angeles+St,+Glendale,+CA+91204"
+        href="https://maps.app.goo.gl/TJwoDe8SBM69MQQW9"
         target="_blank"
         rel="noopener noreferrer"
       >Open in Google Maps</a>
@@ -81,7 +81,18 @@
   <section class="card">
     <h2>Contact</h2>
     <p>
-      Maintainer: {{ maintainer_name }}(<span
+      Instagram:
+      <a
+        class="rules-link"
+        href="{{ instagram_url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >@la_ace_basketball</a>
+    </p>
+    <p>
+      {{ maintainer_name }}
+      (Kakao: {{ maintainer_kakao }}, email:
+      <span
         class="email-address"
         data-email-user="{{ maintainer_email_user }}"
         data-email-domain="{{ maintainer_email_domain }}"
@@ -91,6 +102,9 @@
 
   <section class="card" lang="ko">
     <h2>리그 소개</h2>
+    <p>
+      <a class="rules-link" href="{{ url_for('korean_landing') }}">한국어 소개 페이지</a>
+    </p>
     <p>
       ACE Basketball League는 로스앤젤레스 지역의 한인 커뮤니티 농구 리그입니다.
       엘에이 한인 농구를 함께하려는 선수들이 모이며, 한국인이 아닌 멤버도 함께합니다.
@@ -123,7 +137,18 @@
     <p>농구와, 함께 경기하는 사람들에게 매주 시간을 내는 리그입니다.</p>
     <h3>문의</h3>
     <p>
-      관리자: 노대영(<span
+      Instagram:
+      <a
+        class="rules-link"
+        href="{{ instagram_url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >@la_ace_basketball</a>
+    </p>
+    <p>
+      노대영
+      (카카오: {{ maintainer_kakao }}, 이메일:
+      <span
         class="email-address"
         data-email-user="{{ maintainer_email_user }}"
         data-email-domain="{{ maintainer_email_domain }}"

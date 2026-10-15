@@ -94,7 +94,7 @@
 
   <footer class="site-footer admin-footer">
     <span>{% if is_captain %}Captain access · draft only{% else %}Admin area · captains only{% endif %}</span>
-    <a href="{{ url_for('home') }}">Back to public site</a>
+    <a href="{{ url_for('landing') }}">Back to public site</a>
   </footer>
   {% block scripts %}{% endblock %}
   <script>

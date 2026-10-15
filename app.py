@@ -48,6 +48,7 @@ RULES_URL = (
 YOUTUBE_URL = "https://www.youtube.com/channel/UCZ6oGz5C9yV2RgsykYvAOyA"
 INSTAGRAM_URL = "https://www.instagram.com/la_ace_basketball/"
 MAINTAINER_NAME = "Dae Young Roh"
+MAINTAINER_KAKAO = "spinxara"
 # Split so the address is never rendered as plain text; the footer and About
 # page reassemble it in the browser.
 MAINTAINER_EMAIL_USER = "spinxara"
@@ -56,6 +57,8 @@ SITE_URL = os.environ.get("SITE_URL", "https://acebasketballteam.com").rstrip("/
 WWW_HOST = "www.acebasketballteam.com"
 PUBLIC_SITEMAP_PATHS = (
     "/",
+    "/ko",
+    "/home",
     "/about",
     "/rules",
     "/season-results",
@@ -64,6 +67,7 @@ PUBLIC_SITEMAP_PATHS = (
     "/team-matchups",
     "/team-moments",
 )
+HREFLANG_PATHS = frozenset({"/", "/ko"})
 
 SPONSORS = [
     {
@@ -245,6 +249,13 @@ def inject_globals():
     admin_nav = ADMIN_NAV
     if is_captain_session():
         admin_nav = [ADMIN_DRAFT_NAV_ITEM]
+    hreflang_alternates = None
+    if path in HREFLANG_PATHS:
+        hreflang_alternates = [
+            {"lang": "en", "href": SITE_URL + "/"},
+            {"lang": "ko", "href": SITE_URL + "/ko"},
+            {"lang": "x-default", "href": SITE_URL + "/"},
+        ]
     return {
         "public_nav": PUBLIC_NAV,
         "admin_nav": admin_nav,
@@ -255,6 +266,7 @@ def inject_globals():
         "last_updated": "September 14, 2026",
         "current_year": datetime.now().year,
         "maintainer_name": MAINTAINER_NAME,
+        "maintainer_kakao": MAINTAINER_KAKAO,
         "maintainer_email_user": MAINTAINER_EMAIL_USER,
         "maintainer_email_domain": MAINTAINER_EMAIL_DOMAIN,
         "is_admin": is_admin_session(),
@@ -263,6 +275,7 @@ def inject_globals():
         "site_url": SITE_URL,
         "canonical_url": SITE_URL + path,
         "logo_url": logo_url,
+        "hreflang_alternates": hreflang_alternates,
         "organization_schema": {
             "@context": "https://schema.org",
             "@type": "SportsOrganization",
@@ -1703,8 +1716,18 @@ def sitemap_xml():
 
 
 @app.route("/")
+def landing():
+    return render_template("public/landing.html", active="landing")
+
+
+@app.route("/home")
 def home():
     return render_template("public/home.html", active="home")
+
+
+@app.route("/ko")
+def korean_landing():
+    return render_template("public/ko.html", active="landing")
 
 
 @app.route("/about")

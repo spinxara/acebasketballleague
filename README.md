@@ -10,9 +10,10 @@ Live site: https://acebasketballteam.com
 
 ### Public site
 
-- Home page with league overview, rules, social links, and sponsor logos.
-- About page with the Sunday schedule, Glendale court, and a Korean introduction.
-- Top navigation: Home, About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
+- Marketing landings at `/` (English) and `/ko` (Korean): hero, when/where, season overview, and contact. Logo in the header returns to `/`.
+- Guidebook hub at `/home` (nav label Home): rules, what’s included, social links, and sponsor logos.
+- About page with the Sunday schedule, Glendale court, and a Korean introduction that links to `/ko`.
+- Top navigation: Home (`/home`), About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
 - Season results, member stats, player stats by season, and team matchups (loaded from Supabase).
 - Team moments photo gallery.
 - League game rules (version 3.1), linked from the home page and the footer.
@@ -122,7 +123,9 @@ The app listens on:
 http://localhost:5055
 ```
 
-Public pages: `http://localhost:5055/`
+Landing: `http://localhost:5055/`
+Korean landing: `http://localhost:5055/ko`
+Guidebook: `http://localhost:5055/home`
 Admin: `http://localhost:5055/admin`
 
 ## Render
@@ -138,12 +141,13 @@ On the Render service, set `SESSION_COOKIE_SECURE=true`. Set `SITE_URL` only if 
 
 ## Search
 
-Public pages include a description, canonical URL, share tags, and SportsOrganization structured data (name, Glendale address, and social profiles). `/robots.txt` allows those pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs, including `/about`. Admin pages send `noindex, nofollow`.
+Public pages include a description, canonical URL, share tags, and SportsOrganization structured data (name, Glendale address, and social profiles). `/` and `/ko` are the marketing landings and include `hreflang` alternates (`en`, `ko`, `x-default`). `/robots.txt` allows public pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs, including `/`, `/ko`, `/home`, and `/about`. Admin pages send `noindex, nofollow`.
 
 After deploy:
 
 1. In Google Search Console, add a domain property for `acebasketballteam.com`, verify it with a DNS record at the domain registrar, and submit `https://acebasketballteam.com/sitemap.xml`.
-2. Put `https://acebasketballteam.com` in the Instagram bio and the YouTube channel About section.
+2. Use URL Inspection on `https://acebasketballteam.com/ko` and request indexing.
+3. Put `https://acebasketballteam.com` in the Instagram bio and the YouTube channel About section.
 
 Indexing usually takes days to a few weeks.
 
@@ -151,7 +155,7 @@ Indexing usually takes days to a few weeks.
 
 ### Public pages
 
-Open the home page. Use Home, About, Stats, and Moments in the top nav. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Game rules are on the home page and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
 
 ### Sponsors
 
