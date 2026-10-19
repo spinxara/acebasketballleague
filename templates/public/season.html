@@ -1,0 +1,268 @@
+{% extends "public/base.html" %}
+
+{% block title %}{{ season_label }} · ACE Basketball League Guidebook & Stats{% endblock %}
+{% block description %}Roster, standings, tournament, and game videos for the {{ season_label }} ACE Basketball League season.{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <p class="note season-back">
+      <a class="table-link" href="{{ url_for('season_results') }}">Season Results</a>
+    </p>
+    <h1>{{ season_label }}</h1>
+    {% if season %}
+      <p class="lead">
+        {% if season.start_label or season.end_label %}
+          {{ season.start_label or "—" }} – {{ season.end_label or "—" }}
+        {% else %}
+          Season record
+        {% endif %}
+        {% if season.status_label or season.status %}
+          <span class="status-pill {{ season.status_class }}">{{ season.status_label or season.status }}</span>
+        {% endif %}
+      </p>
+    {% endif %}
+    {% if season and season.notes %}
+      <p class="note">{{ season.notes }}</p>
+    {% endif %}
+  </section>
+
+  {% if load_error %}
+    <section class="card">
+      <p class="error-note">Could not load this season. {{ load_error }}</p>
+    </section>
+  {% elif season %}
+    <section class="card">
+      <h2>Teams</h2>
+      {% if not roster %}
+        <p class="note">No roster saved for this season.</p>
+      {% else %}
+        <div class="season-roster">
+          {% for team in roster %}
+            <article class="season-team">
+              {% if team.logo %}
+                <img class="season-team-logo" src="{{ url_for('static', filename=team.logo) }}" alt="{{ team.name }} logo" />
+              {% endif %}
+              <span class="team-pill {{ team.team_class }}">{{ team.code }}</span>
+              {% if team.show_name %}
+                <h3>{{ team.name }}</h3>
+              {% endif %}
+              <ul>
+                {% for player in team.players %}
+                  <li>{{ player }}</li>
+                {% endfor %}
+              </ul>
+            </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Awards</h2>
+      <div class="season-awards">
+        <article class="season-award">
+          <h3>Tournament winner</h3>
+          <p>{{ season.tournament_winner or "—" }}</p>
+          {% if season.season_winner_photo_url %}
+            <button
+              type="button"
+              class="season-award-photo"
+              data-lightbox-open
+              data-src="{{ season.season_winner_photo_url }}"
+              data-caption="{{ season_label }} tournament winner{% if season.tournament_winner %}: {{ season.tournament_winner }}{% endif %}"
+              aria-label="Open tournament winner photo"
+            >
+              <img src="{{ season.season_winner_photo_url }}" alt="" />
+            </button>
+          {% endif %}
+        </article>
+        <article class="season-award">
+          <h3>Most improved player</h3>
+          <p>{{ season.mip_award or "—" }}</p>
+          {% if season.mip_photo_url %}
+            <button
+              type="button"
+              class="season-award-photo"
+              data-lightbox-open
+              data-src="{{ season.mip_photo_url }}"
+              data-caption="{{ season_label }} MIP{% if season.mip_award %}: {{ season.mip_award }}{% endif %}"
+              aria-label="Open MIP photo"
+            >
+              <img src="{{ season.mip_photo_url }}" alt="" />
+            </button>
+          {% endif %}
+        </article>
+      </div>
+      {% if season.photos %}
+        <h3 class="season-photo-heading">Season photos</h3>
+        <div class="moments-grid">
+          {% for photo in season.photos %}
+            <figure class="moment-card">
+              <button
+                type="button"
+                class="moment-thumb"
+                data-lightbox-open
+                data-src="{{ photo.image_url }}"
+                data-caption="{{ photo.caption }}"
+                aria-label="Open photo{% if photo.caption %}: {{ photo.caption }}{% endif %}"
+              >
+                <img src="{{ photo.image_url }}" alt="{{ photo.caption or 'Season photo' }}" loading="lazy" />
+              </button>
+              {% if photo.caption %}
+                <figcaption>{{ photo.caption }}</figcaption>
+              {% endif %}
+            </figure>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Tournament</h2>
+      {% if season.tournament_date_label or season.tournament_winner or season.tournament_runnerup %}
+        <p class="note">
+          {% if season.tournament_date_label %}{{ season.tournament_date_label }}{% endif %}
+          {% if season.tournament_winner %}
+            Winner {{ season.tournament_winner }}
+          {% endif %}
+          {% if season.tournament_runnerup %}
+            · Runner-up {{ season.tournament_runnerup }}
+          {% endif %}
+        </p>
+      {% endif %}
+      {% if not matches %}
+        <p class="note">No tournament games recorded.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table class="stats-table stack-mobile">
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th>Team 1</th>
+                <th>Team 2</th>
+                <th>Winner</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for match in matches %}
+                <tr>
+                  <td class="row-title">{{ match.round or "—" }}</td>
+                  <td data-label="Team 1">
+                    {% if match.team1 %}
+                      <span class="team-pill {{ match.team1_class }}">{{ match.team1 }}</span>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td data-label="Team 2">
+                    {% if match.team2 %}
+                      <span class="team-pill {{ match.team2_class }}">{{ match.team2 }}</span>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td data-label="Winner">
+                    {% if match.winner %}
+                      <span class="team-pill {{ match.winner_class }}">{{ match.winner }}</span>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td data-label="Date">{{ match.played_at or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Regular season</h2>
+      {% if not standings %}
+        <p class="note">No regular-season games recorded.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table class="stats-table stack-mobile">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th class="numeric">Win</th>
+                <th class="numeric">Loss</th>
+                <th class="numeric">Winning rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in standings %}
+                <tr>
+                  <td class="row-title">
+                    <span class="team-pill {{ row.team_class }}">{{ row.team }}</span>
+                  </td>
+                  <td class="numeric" data-label="Win">{{ row.wins }}</td>
+                  <td class="numeric" data-label="Loss">{{ row.losses }}</td>
+                  <td class="numeric" data-label="Winning rate">{{ row.win_rate }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      {% for week in weeks %}
+        <h3 class="season-week-heading">Week {{ week.week }} · {{ week.date }}</h3>
+        <div class="table-wrap">
+          <table class="stats-table stack-mobile">
+            <thead>
+              <tr>
+                <th>Game</th>
+                <th>Teams</th>
+                <th>Winner</th>
+                <th>Video</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for game in week.games %}
+                <tr>
+                  <td class="row-title">{{ game.game_number }}</td>
+                  <td data-label="Teams">
+                    <span class="team-pill {{ game.away_class }}">{{ game.away_team }}</span>
+                    vs
+                    <span class="team-pill {{ game.home_class }}">{{ game.home_team }}</span>
+                  </td>
+                  <td data-label="Winner">
+                    {% if game.winner_team %}
+                      <span class="team-pill {{ game.winner_class }}">{{ game.winner_team }}</span>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td data-label="Video">
+                    {% if game.youtube_url %}
+                      <a class="table-link" href="{{ game.youtube_url }}" target="_blank" rel="noopener noreferrer">Watch</a>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <div class="lightbox" data-lightbox aria-hidden="true">
+    <button type="button" class="lightbox-close" data-lightbox-close aria-label="Close photo">Close</button>
+    <button type="button" class="lightbox-nav lightbox-prev" data-lightbox-prev hidden aria-label="Previous photo">Previous</button>
+    <img data-lightbox-image alt="" />
+    <button type="button" class="lightbox-nav lightbox-next" data-lightbox-next hidden aria-label="Next photo">Next</button>
+    <p class="lightbox-caption" data-lightbox-caption></p>
+    <p class="lightbox-counter" data-lightbox-counter hidden></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='moments.js') }}" defer></script>
+{% endblock %}

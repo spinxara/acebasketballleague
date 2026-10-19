@@ -6,7 +6,7 @@
   <section class="card">
     <h2>Team Moments</h2>
     <p class="lead">Upload photos for the public Team Moments gallery.</p>
-    <p class="note">JPEG, PNG, WEBP, or GIF. Each photo can be up to 10MB. Large phone photos are resized automatically.</p>
+    <p class="note">JPEG, PNG, WEBP, or GIF. Each photo can be up to 10MB. Large phone photos are resized automatically. Tournament winner, MIP, and season photos added on Seasons show up here too.</p>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -52,16 +52,36 @@
     {% elif not moments %}
       <p class="note">No team photos yet.</p>
     {% else %}
-      <p class="note">{{ moments | length }} photo{% if moments | length != 1 %}s{% endif %} on the public page.</p>
-      <div class="moments-grid">
+      <p class="note">{{ moments | length }} photo{% if moments | length != 1 %}s{% endif %} on the public page. The first photo here is the first photo on the public page.</p>
+      {% if order_ready %}
+        <form
+          class="moment-order-bar"
+          method="post"
+          action="{{ url_for('admin_moment_order') }}"
+          id="moment-order-form"
+        >
+          <input type="hidden" name="order" id="moment-order" value="{{ moment_order }}" />
+          <button class="login-submit" type="submit" id="moment-order-save" disabled>Save order</button>
+        </form>
+      {% else %}
+        <p class="note">Photo order is not set up yet. Run supabase/team_moments_add_sort_order.sql in the SQL editor, then reload this page.</p>
+      {% endif %}
+      <div class="moments-grid" {% if order_ready %}data-moment-grid{% endif %}>
         {% for moment in moments %}
-          <figure class="moment-card">
+          <figure class="moment-card" data-moment-id="{{ moment.id }}">
+            {% if order_ready %}
+              <div class="moment-tools">
+                <button type="button" class="moment-drag" data-moment-drag draggable="true" aria-label="Drag to reorder">Drag</button>
+                <button type="button" class="moment-move" data-move="earlier">Earlier</button>
+                <button type="button" class="moment-move" data-move="later">Later</button>
+              </div>
+            {% endif %}
             <button
               type="button"
               class="moment-thumb"
               data-lightbox-open
               data-src="{{ moment.image_url }}"
-              data-caption="{{ moment.caption }}"
+              data-caption="{{ moment.display_caption or moment.caption }}"
               aria-label="Open photo{% if moment.caption %}: {{ moment.caption }}{% endif %}"
             >
               <img
@@ -72,6 +92,9 @@
             </button>
             {% if moment.caption %}
               <figcaption>{{ moment.caption }}</figcaption>
+            {% endif %}
+            {% if moment.season %}
+              <p class="moment-meta">{{ moment.season }}{% if moment.kind_label %} · {{ moment.kind_label }}{% endif %}</p>
             {% endif %}
             {% if moment.created_label %}
               <p class="moment-meta">{{ moment.created_label }}</p>
@@ -102,4 +125,7 @@
 
 {% block scripts %}
   <script src="{{ url_for('static', filename='moments.js') }}" defer></script>
+  {% if order_ready %}
+    <script src="{{ url_for('static', filename='moment-order.js') }}" defer></script>
+  {% endif %}
 {% endblock %}

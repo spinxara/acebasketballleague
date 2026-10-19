@@ -27,7 +27,7 @@
               class="moment-thumb"
               data-lightbox-open
               data-src="{{ moment.image_url }}"
-              data-caption="{{ moment.caption }}"
+              data-caption="{{ moment.display_caption or moment.caption }}"
               aria-label="Open photo{% if moment.caption %}: {{ moment.caption }}{% endif %}"
             >
               <img
@@ -38,6 +38,9 @@
             </button>
             {% if moment.caption %}
               <figcaption>{{ moment.caption }}</figcaption>
+            {% endif %}
+            {% if moment.season %}
+              <p class="moment-meta">{{ moment.season }}{% if moment.kind_label %} · {{ moment.kind_label }}{% endif %}</p>
             {% endif %}
             {% if moment.created_label %}
               <p class="moment-meta">{{ moment.created_label }}</p>

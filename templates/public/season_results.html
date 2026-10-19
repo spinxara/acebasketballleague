@@ -10,7 +10,7 @@
       Season summaries, including champions, status, MIP awards, notes,
       match results, and video recordings.
     </p>
-    <p class="note">Match results and video recordings will also live on this page.</p>
+    <p class="note">Open a season page for the roster, standings, tournament, and game videos.</p>
   </section>
 
   <section class="card">
@@ -56,16 +56,40 @@
                     —
                   {% endif %}
                 </td>
-                <td data-label="Season Winner">{{ row.season_winner or "—" }}</td>
-                <td data-label="Season Runner-up">{{ row.season_runnerup or "—" }}</td>
+                <td data-label="Season Winner">
+                  {% if row.season_winner %}
+                    <span class="team-pill {{ row.season_winner_class }}">{{ row.season_winner }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="Season Runner-up">
+                  {% if row.season_runnerup %}
+                    <span class="team-pill {{ row.season_runnerup_class }}">{{ row.season_runnerup }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
                 <td data-label="Tournament">{{ row.tournament_date or "—" }}</td>
-                <td data-label="Tournament Winner">{{ row.tournament_winner or "—" }}</td>
-                <td data-label="Tournament Runner-up">{{ row.tournament_runnerup or "—" }}</td>
+                <td data-label="Tournament Winner">
+                  {% if row.tournament_winner %}
+                    <span class="team-pill {{ row.tournament_winner_class }}">{{ row.tournament_winner }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="Tournament Runner-up">
+                  {% if row.tournament_runnerup %}
+                    <span class="team-pill {{ row.tournament_runnerup_class }}">{{ row.tournament_runnerup }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
                 <td data-label="MIP Award">{{ row.mip_award or "—" }}</td>
                 <td class="wrap-cell notes-cell" data-label="Notes">{{ row.notes or "—" }}</td>
                 <td data-label="Season Page">
-                  {% if row.season_page_url %}
-                    <a class="table-link" href="{{ row.season_page_url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                  {% if row.slug %}
+                    <a class="table-link" href="{{ url_for('season_record', slug=row.slug) }}">Open</a>
                   {% else %}
                     —
                   {% endif %}

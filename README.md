@@ -14,7 +14,7 @@ Live site: https://acebasketballteam.com
 - Guidebook hub at `/home` (nav label Home): rules, what’s included, social links, and sponsor logos.
 - About page with the Sunday schedule, Glendale court, and a Korean introduction that links to `/ko`.
 - Top navigation: Home (`/home`), About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
-- Season results, member stats, player stats by season, and team matchups (loaded from Supabase).
+- Season results, member stats, player stats by season, and team matchups (loaded from Supabase). Each season also has a page at `/season/Jul-Sep-2026` with the roster, standings, tournament matches, photos, and game videos.
 - Team moments photo gallery.
 - League game rules (version 3.1), linked from the home page and the footer.
 - Sponsor row on the home page and a "Supported by" line in the footer. Names, links, and logos live in `SPONSORS` in `app.py`.
@@ -38,7 +38,7 @@ Live site: https://acebasketballteam.com
 - Players page to list, add, and update league members and non-members (`active` / `non_member` / comments) in Supabase.
 - Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, and season page links.
 - Roster page to view a season’s `team_members`, move players between NPS/KCN/BK, add/remove players, and clear a season roster (initial roster still comes from Draft Room).
-- Games page to save one Sunday: six `game_results` (winner, no score) and `player_played_games` lineups, then `refresh_all_stats`.
+- Games page to save one Sunday: six `game_results` (winner, no score) and `player_played_games` lineups, then `refresh_all_stats`. Each game can store an optional YouTube link, including after the Sunday is already saved.
 - Placeholder pages for dashboard, games, and tournament (not wired yet).
 
 Visiting `/draft` redirects to `/admin/draft`.
@@ -156,7 +156,7 @@ Indexing usually takes days to a few weeks.
 
 ### Public pages
 
-Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Open a season from Season Results for that season’s roster, standings, tournament matches, photos, and game videos. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
 
 ### Sponsors
 
@@ -209,6 +209,8 @@ Public stats pages expect these tables (or views):
 - `team_moments`
 - `players` (league members and non-members; draft pool = `active` and not `non_member`)
 - `team_members` (per-season roster; created from Draft Room, managed on Roster)
+- `tournament_matches` (semi-final and final rows for each season page)
+- `game_results` (regular-season games, including `youtube_url`)
 
 Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
 
@@ -224,9 +226,11 @@ To add the league members table and link season rosters / stats:
 
 For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 
+For season winner photos, MIP photos, and extra season photos, run `supabase/season_photos.sql`. That adds `season` and `photo_kind` to `team_moments`. Those photos use the existing `team-moments` bucket and appear on Team Moments.
+
 For Draft Room “Save to roster” and Roster admin writes (insert/update/delete on `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to modify roster rows.
 
-For Games admin writes (`game_results` and `player_played_games`), run `supabase/games_admin_policies.sql`.
+For Games admin writes (`game_results` and `player_played_games`), run `supabase/games_admin_policies.sql`. To store a YouTube link on each game, also run `supabase/game_results_add_youtube_url.sql`.
 
 ## Notes
 

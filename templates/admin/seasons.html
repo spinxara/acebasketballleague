@@ -4,9 +4,14 @@
 
 {% block content %}
   <section class="card">
-    <h2>Seasons</h2>
-    <p class="lead">Add seasons and update status, dates, winners, MIP, notes, and season page links.</p>
-    <p class="note">Team setup and mid-season trades (NPS / KCN / BK) stay on Roster. Initial roster still comes from Draft Room.</p>
+    <div class="seasons-list-head">
+      <div>
+        <h2>Seasons</h2>
+        <p class="lead">Add seasons and update status, dates, winners, MIP, notes, and season page links.</p>
+        <p class="note">Team setup and mid-season trades (NPS / KCN / BK) stay on Roster. Initial roster still comes from Draft Room.</p>
+      </div>
+      <button class="login-submit seasons-add-btn" type="button" id="add-season">Add a Season</button>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -17,101 +22,6 @@
         </ul>
       {% endif %}
     {% endwith %}
-
-    <form
-      class="upload-form seasons-form"
-      method="post"
-      action="{{ url_for('admin_seasons', status=status) }}"
-    >
-      <div class="seasons-label-row">
-        <div>
-          <label for="season_quarter">Quarter</label>
-          <select id="season_quarter" name="season_quarter" required>
-            {% for quarter in season_quarters %}
-              <option value="{{ quarter }}">{{ quarter }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label for="season_year">Year</label>
-          <input
-            id="season_year"
-            name="season_year"
-            type="number"
-            min="2000"
-            max="2100"
-            step="1"
-            required
-            value="{{ default_year }}"
-          />
-        </div>
-        <div>
-          <label for="status">Status</label>
-          <select id="status" name="status" required>
-            {% for option in season_statuses %}
-              <option value="{{ option }}"{% if option == "planned" %} selected{% endif %}>
-                {{ option|capitalize }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-
-      <div class="seasons-label-row">
-        <div>
-          <label for="season_start_date">Season start</label>
-          <input id="season_start_date" name="season_start_date" type="date" />
-        </div>
-        <div>
-          <label for="season_end_date">Season end</label>
-          <input id="season_end_date" name="season_end_date" type="date" />
-        </div>
-        <div>
-          <label for="tournament_date">Tournament date</label>
-          <input id="tournament_date" name="tournament_date" type="date" />
-        </div>
-      </div>
-
-      <div class="seasons-label-row">
-        <div>
-          <label for="season_winner">Season winner</label>
-          <input id="season_winner" name="season_winner" type="text" maxlength="40" placeholder="BK" />
-        </div>
-        <div>
-          <label for="season_runnerup">Season runner-up</label>
-          <input id="season_runnerup" name="season_runnerup" type="text" maxlength="40" placeholder="KCN" />
-        </div>
-        <div>
-          <label for="tournament_winner">Tournament winner</label>
-          <input id="tournament_winner" name="tournament_winner" type="text" maxlength="40" />
-        </div>
-        <div>
-          <label for="tournament_runnerup">Tournament runner-up</label>
-          <input id="tournament_runnerup" name="tournament_runnerup" type="text" maxlength="40" />
-        </div>
-      </div>
-
-      <label for="mip_award">MIP award</label>
-      <input id="mip_award" name="mip_award" type="text" maxlength="120" placeholder="Player name" />
-
-      <label for="season_page">Season page URL</label>
-      <input
-        id="season_page"
-        name="season_page"
-        type="url"
-        maxlength="500"
-        placeholder="https://..."
-      />
-
-      <label for="notes">Notes</label>
-      <input id="notes" name="notes" type="text" maxlength="500" placeholder="Optional notes" />
-
-      <button class="login-submit" type="submit">Add season</button>
-    </form>
-  </section>
-
-  <section class="card">
-    <h3>Season list</h3>
 
     <nav class="players-filters" aria-label="Filter seasons">
       {% for filter_id in status_filters %}
@@ -129,244 +39,459 @@
     {% elif not seasons %}
       <p class="note">No seasons match this filter.</p>
     {% else %}
-      {% for row in seasons %}
-        <form
-          id="delete-season-{{ loop.index }}"
-          method="post"
-          action="{{ url_for('admin_delete_season', status=status) }}"
-        >
-          <input type="hidden" name="status" value="{{ status }}" />
-          <input type="hidden" name="season" value="{{ row.season }}" />
-        </form>
-      {% endfor %}
-
-      <form
-        class="seasons-bulk-form"
-        method="post"
-        action="{{ url_for('admin_bulk_update_seasons', status=status) }}"
-      >
-        <input type="hidden" name="status" value="{{ status }}" />
-        <div class="players-bulk-actions">
-          <p class="note">{{ seasons | length }} season{% if seasons | length != 1 %}s{% endif %}.</p>
-          <button class="login-submit" type="submit">Save all changes</button>
-        </div>
-
-        {% for row in seasons %}
-          <fieldset class="seasons-edit-card" data-season-card>
-            <legend class="seasons-edit-legend">
-              <span class="seasons-edit-title">
-                {{ row.season }}
-                <span class="status-pill {{ row.status_class }}">{{ row.status_label or "—" }}</span>
-              </span>
-              <button
-                class="danger-btn"
-                type="button"
-                data-show-delete
-                aria-expanded="false"
-                aria-controls="delete-confirm-{{ loop.index }}"
-              >
-                Delete
-              </button>
-            </legend>
-            <input type="hidden" name="season_key" value="{{ row.season }}" />
-
-            <div class="seasons-edit-grid">
-              <div>
-                <label for="status-{{ loop.index }}">Status</label>
-                <select id="status-{{ loop.index }}" name="status[{{ row.season }}]" required>
-                  {% for option in season_statuses %}
-                    <option value="{{ option }}"{% if row.status == option %} selected{% endif %}>
-                      {{ option|capitalize }}
-                    </option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div>
-                <label for="season_start_date-{{ loop.index }}">Season start</label>
-                <input
-                  id="season_start_date-{{ loop.index }}"
-                  name="season_start_date[{{ row.season }}]"
-                  type="date"
-                  value="{{ row.season_start_date }}"
-                />
-              </div>
-              <div>
-                <label for="season_end_date-{{ loop.index }}">Season end</label>
-                <input
-                  id="season_end_date-{{ loop.index }}"
-                  name="season_end_date[{{ row.season }}]"
-                  type="date"
-                  value="{{ row.season_end_date }}"
-                />
-              </div>
-              <div>
-                <label for="tournament_date-{{ loop.index }}">Tournament date</label>
-                <input
-                  id="tournament_date-{{ loop.index }}"
-                  name="tournament_date[{{ row.season }}]"
-                  type="date"
-                  value="{{ row.tournament_date }}"
-                />
-              </div>
-              <div>
-                <label for="season_winner-{{ loop.index }}">Season winner</label>
-                <input
-                  id="season_winner-{{ loop.index }}"
-                  name="season_winner[{{ row.season }}]"
-                  type="text"
-                  maxlength="40"
-                  value="{{ row.season_winner }}"
-                />
-              </div>
-              <div>
-                <label for="season_runnerup-{{ loop.index }}">Season runner-up</label>
-                <input
-                  id="season_runnerup-{{ loop.index }}"
-                  name="season_runnerup[{{ row.season }}]"
-                  type="text"
-                  maxlength="40"
-                  value="{{ row.season_runnerup }}"
-                />
-              </div>
-              <div>
-                <label for="tournament_winner-{{ loop.index }}">Tournament winner</label>
-                <input
-                  id="tournament_winner-{{ loop.index }}"
-                  name="tournament_winner[{{ row.season }}]"
-                  type="text"
-                  maxlength="40"
-                  value="{{ row.tournament_winner }}"
-                />
-              </div>
-              <div>
-                <label for="tournament_runnerup-{{ loop.index }}">Tournament runner-up</label>
-                <input
-                  id="tournament_runnerup-{{ loop.index }}"
-                  name="tournament_runnerup[{{ row.season }}]"
-                  type="text"
-                  maxlength="40"
-                  value="{{ row.tournament_runnerup }}"
-                />
-              </div>
-              <div class="seasons-span-2">
-                <label for="mip_award-{{ loop.index }}">MIP award</label>
-                <input
-                  id="mip_award-{{ loop.index }}"
-                  name="mip_award[{{ row.season }}]"
-                  type="text"
-                  maxlength="120"
-                  value="{{ row.mip_award }}"
-                />
-              </div>
-              <div class="seasons-span-2">
-                <label for="season_page-{{ loop.index }}">Season page URL</label>
-                <input
-                  id="season_page-{{ loop.index }}"
-                  name="season_page[{{ row.season }}]"
-                  type="url"
-                  maxlength="500"
-                  value="{{ row.season_page }}"
-                />
-              </div>
-              <div class="seasons-span-2">
-                <label for="notes-{{ loop.index }}">Notes</label>
-                <input
-                  id="notes-{{ loop.index }}"
-                  name="notes[{{ row.season }}]"
-                  type="text"
-                  maxlength="500"
-                  value="{{ row.notes }}"
-                />
-              </div>
-            </div>
-
-            <div
-              class="seasons-delete-confirm"
-              id="delete-confirm-{{ loop.index }}"
-              hidden
-              data-delete-confirm
-            >
-              <p class="seasons-delete-warning">
-                Permanently delete <strong>{{ row.season }}</strong>?
-                Type the season label exactly to confirm.
-              </p>
-              <div class="seasons-delete-form">
-                <label for="confirm-season-{{ loop.index }}">Confirm season label</label>
-                <input
-                  id="confirm-season-{{ loop.index }}"
-                  form="delete-season-{{ loop.index }}"
-                  name="confirm_season"
-                  type="text"
-                  required
-                  autocomplete="off"
-                  placeholder="{{ row.season }}"
-                  data-expected-season="{{ row.season }}"
-                />
-                <div class="seasons-delete-actions">
-                  <button
-                    class="danger-btn"
-                    type="submit"
-                    form="delete-season-{{ loop.index }}"
-                  >
-                    Confirm delete
-                  </button>
-                  <button class="nav-link" type="button" data-cancel-delete>Cancel</button>
-                </div>
-              </div>
-            </div>
-          </fieldset>
-        {% endfor %}
-
-        <div class="players-bulk-actions players-bulk-actions-bottom">
-          <button class="login-submit" type="submit">Save all changes</button>
-        </div>
-      </form>
+      <p class="note">{{ seasons | length }} season{% if seasons | length != 1 %}s{% endif %}.</p>
+      <div class="table-wrap">
+        <table class="stats-table seasons-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Status</th>
+              <th>Dates</th>
+              <th>Season winner</th>
+              <th>Tournament winner</th>
+              <th>MIP</th>
+              <th><span class="visually-hidden">Edit</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in seasons %}
+              <tr>
+                <td>{{ row.season }}</td>
+                <td>
+                  <span class="status-pill {{ row.status_class }}">{{ row.status_label or "—" }}</span>
+                </td>
+                <td>
+                  {% if row.season_start_date or row.season_end_date %}
+                    {{ row.season_start_date or "—" }} – {{ row.season_end_date or "—" }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>{{ row.season_winner or "—" }}</td>
+                <td>{{ row.tournament_winner or "—" }}</td>
+                <td>{{ row.mip_award or "—" }}</td>
+                <td>
+                  <button class="season-edit-btn" type="button" data-edit-season="{{ row.season }}">Edit</button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% endif %}
   </section>
+
+  <dialog class="season-layer" id="season-layer" aria-labelledby="season-layer-title">
+    <header class="season-layer-header">
+      <h3 id="season-layer-title">Add a season</h3>
+    </header>
+
+    <div class="season-layer-body">
+      <form
+        id="season-form"
+        class="seasons-edit-grid"
+        method="post"
+        enctype="multipart/form-data"
+        action="{{ url_for('admin_seasons', status=status) }}"
+      >
+        <input type="hidden" name="season" id="season-key" value="" disabled />
+
+        <div class="seasons-label-row seasons-span-2" id="season-label-fields">
+          <div>
+            <label for="season_quarter">Quarter</label>
+            <select id="season_quarter" name="season_quarter" required>
+              {% for quarter in season_quarters %}
+                <option value="{{ quarter }}">{{ quarter }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="season_year">Year</label>
+            <input
+              id="season_year"
+              name="season_year"
+              type="number"
+              min="2000"
+              max="2100"
+              step="1"
+              required
+              value="{{ default_year }}"
+            />
+          </div>
+        </div>
+
+        <div class="seasons-label-row seasons-span-2">
+          <div>
+            <label for="status">Status</label>
+            <select id="status" name="status" required>
+              {% for option in season_statuses %}
+                <option value="{{ option }}"{% if option == "planned" %} selected{% endif %}>
+                  {{ option|capitalize }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="season_start_date">Season start</label>
+            <input id="season_start_date" name="season_start_date" type="date" />
+          </div>
+          <div>
+            <label for="season_end_date">Season end</label>
+            <input id="season_end_date" name="season_end_date" type="date" />
+          </div>
+          <div>
+            <label for="tournament_date">Tournament date</label>
+            <input id="tournament_date" name="tournament_date" type="date" />
+          </div>
+        </div>
+
+        <div class="seasons-label-row seasons-name-row seasons-span-2">
+          <div>
+            <label for="season_winner">Season winner</label>
+            <input id="season_winner" name="season_winner" type="text" maxlength="40" placeholder="BK" />
+          </div>
+          <div>
+            <label for="season_runnerup">Season runner-up</label>
+            <input id="season_runnerup" name="season_runnerup" type="text" maxlength="40" placeholder="KCN" />
+          </div>
+          <div>
+            <label for="tournament_winner">Tournament winner</label>
+            <input id="tournament_winner" name="tournament_winner" type="text" maxlength="40" />
+          </div>
+          <div>
+            <label for="tournament_runnerup">Tournament runner-up</label>
+            <input id="tournament_runnerup" name="tournament_runnerup" type="text" maxlength="40" />
+          </div>
+        </div>
+
+        <div class="seasons-label-row seasons-photo-row seasons-span-2">
+          <div class="seasons-span-row">
+            <label for="mip_award">MIP award</label>
+            <input id="mip_award" name="mip_award" type="text" maxlength="120" placeholder="Player name" />
+          </div>
+          <div>
+            <div class="season-photo-field" id="winner-photo-current" hidden>
+              <img id="winner-photo-preview" alt="" />
+              <label class="players-check">
+                <input type="checkbox" id="remove-winner-photo" name="remove_season_winner_photo" />
+                Remove photo
+              </label>
+            </div>
+            <label for="season_winner_photo">Tournament winner photo</label>
+            <input
+              id="season_winner_photo"
+              name="season_winner_photo"
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+            />
+          </div>
+          <div>
+            <div class="season-photo-field" id="mip-photo-current" hidden>
+              <img id="mip-photo-preview" alt="" />
+              <label class="players-check">
+                <input type="checkbox" id="remove-mip-photo" name="remove_mip_photo" />
+                Remove photo
+              </label>
+            </div>
+            <label for="mip_photo">MIP photo</label>
+            <input
+              id="mip_photo"
+              name="mip_photo"
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+            />
+          </div>
+        </div>
+        <div class="seasons-span-2" id="season-photos-block">
+          <h4>Season photos</h4>
+          <p class="note">Extra shots from the season. Winner, MIP, and these photos also appear on Team Moments.</p>
+          <div id="season-photo-list"></div>
+          <label for="season_photos">Add photos</label>
+          <input
+            id="season_photos"
+            name="season_photos"
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+            multiple
+          />
+          <label for="season_photos_caption">Caption for these photos (optional)</label>
+          <input
+            id="season_photos_caption"
+            name="season_photos_caption"
+            type="text"
+            maxlength="280"
+            placeholder="Game night, tournament, hangout..."
+          />
+        </div>
+        <div class="seasons-span-2">
+          <label for="season_page">Season page URL</label>
+          <input id="season_page" name="season_page" type="url" maxlength="500" placeholder="https://..." />
+        </div>
+        <div class="seasons-span-2">
+          <label for="notes">Notes</label>
+          <input id="notes" name="notes" type="text" maxlength="500" placeholder="Optional notes" />
+        </div>
+      </form>
+
+      <div id="season-delete-block" hidden>
+        <button
+          class="danger-btn"
+          type="button"
+          id="show-delete"
+          aria-expanded="false"
+          aria-controls="delete-confirm"
+        >
+          Delete
+        </button>
+        <div class="seasons-delete-confirm" id="delete-confirm" hidden>
+          <p class="seasons-delete-warning">
+            Permanently delete <strong id="delete-season-label"></strong>?
+            Type the season label exactly to confirm.
+          </p>
+          <form
+            class="seasons-delete-form"
+            id="delete-season-form"
+            method="post"
+            action="{{ url_for('admin_delete_season', status=status) }}"
+          >
+            <input type="hidden" name="season" id="delete-season-value" value="" />
+            <label for="confirm-season">Confirm season label</label>
+            <input
+              id="confirm-season"
+              name="confirm_season"
+              type="text"
+              required
+              autocomplete="off"
+              data-expected-season=""
+            />
+            <div class="seasons-delete-actions">
+              <button class="danger-btn" type="submit">Confirm delete</button>
+              <button class="season-layer-close" type="button" id="cancel-delete">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <footer class="season-layer-footer">
+      <button class="season-layer-close" type="button" id="close-season-layer">Close</button>
+      <button class="login-submit" type="submit" form="season-form">Save</button>
+    </footer>
+  </dialog>
 {% endblock %}
 
 {% block scripts %}
+  <script id="seasons-data" type="application/json">{{ seasons | tojson }}</script>
   <script>
-    document.querySelectorAll("[data-season-card]").forEach(function (card) {
-      var showBtn = card.querySelector("[data-show-delete]");
-      var panel = card.querySelector("[data-delete-confirm]");
-      var cancelBtn = card.querySelector("[data-cancel-delete]");
-      var confirmInput = card.querySelector("[data-expected-season]");
-      var formId = showBtn && showBtn.getAttribute("aria-controls");
-      var deleteForm = formId
-        ? document.getElementById(formId.replace("delete-confirm-", "delete-season-"))
-        : null;
+    (function () {
+      var layer = document.getElementById("season-layer");
+      var form = document.getElementById("season-form");
+      var title = document.getElementById("season-layer-title");
+      var addButton = document.getElementById("add-season");
+      var labelFields = document.getElementById("season-label-fields");
+      var quarter = document.getElementById("season_quarter");
+      var year = document.getElementById("season_year");
+      var seasonKey = document.getElementById("season-key");
+      var deleteBlock = document.getElementById("season-delete-block");
+      var deletePanel = document.getElementById("delete-confirm");
+      var deleteForm = document.getElementById("delete-season-form");
+      var deleteValue = document.getElementById("delete-season-value");
+      var deleteLabel = document.getElementById("delete-season-label");
+      var showDelete = document.getElementById("show-delete");
+      var cancelDelete = document.getElementById("cancel-delete");
+      var confirmInput = document.getElementById("confirm-season");
+      var closeButton = document.getElementById("close-season-layer");
+      var addAction = {{ url_for("admin_seasons", status=status) | tojson }};
+      var updateAction = {{ url_for("admin_update_season", status=status) | tojson }};
+      var seasons = [];
+      var dataNode = document.getElementById("seasons-data");
 
-      if (!showBtn || !panel || !confirmInput || !deleteForm) return;
+      if (!layer || !form || !dataNode) return;
 
-      function setOpen(open) {
-        panel.hidden = !open;
-        showBtn.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) {
+      try {
+        seasons = JSON.parse(dataNode.textContent || "[]");
+      } catch (error) {
+        seasons = [];
+      }
+
+      var bySeason = {};
+      seasons.forEach(function (row) {
+        if (row && row.season) bySeason[row.season] = row;
+      });
+
+      var fieldIds = [
+        "status",
+        "season_start_date",
+        "season_end_date",
+        "tournament_date",
+        "season_winner",
+        "season_runnerup",
+        "tournament_winner",
+        "tournament_runnerup",
+        "mip_award",
+        "season_page",
+        "notes"
+      ];
+
+      function setDeleteOpen(open) {
+        if (!deletePanel || !showDelete) return;
+        deletePanel.hidden = !open;
+        showDelete.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open && confirmInput) {
           confirmInput.value = "";
           confirmInput.focus();
         }
       }
 
-      showBtn.addEventListener("click", function () {
-        setOpen(panel.hidden);
-      });
+      function setAwardPhoto(blockId, imageId, url) {
+        var block = document.getElementById(blockId);
+        var image = document.getElementById(imageId);
+        if (!block || !image) return;
+        if (url) {
+          image.src = url;
+          image.alt = title.textContent || "Season photo";
+          block.hidden = false;
+        } else {
+          image.removeAttribute("src");
+          image.alt = "";
+          block.hidden = true;
+        }
+      }
 
-      if (cancelBtn) {
-        cancelBtn.addEventListener("click", function () {
-          setOpen(false);
+      function renderSeasonPhotos(photos) {
+        var list = document.getElementById("season-photo-list");
+        if (!list) return;
+        list.replaceChildren();
+        (photos || []).forEach(function (photo) {
+          if (!photo || !photo.id) return;
+          var figure = document.createElement("figure");
+          figure.className = "season-extra-photo";
+
+          var image = document.createElement("img");
+          image.src = photo.image_url || "";
+          image.alt = photo.caption || "Season photo";
+
+          var captionLabel = document.createElement("label");
+          captionLabel.textContent = "Caption";
+          var caption = document.createElement("input");
+          caption.type = "text";
+          caption.name = "photo_caption[" + photo.id + "]";
+          caption.value = photo.caption || "";
+          caption.maxLength = 280;
+
+          var removeLabel = document.createElement("label");
+          removeLabel.className = "players-check";
+          var remove = document.createElement("input");
+          remove.type = "checkbox";
+          remove.name = "delete_photo";
+          remove.value = photo.id;
+          removeLabel.appendChild(remove);
+          removeLabel.appendChild(document.createTextNode(" Remove"));
+
+          figure.appendChild(image);
+          figure.appendChild(captionLabel);
+          figure.appendChild(caption);
+          figure.appendChild(removeLabel);
+          list.appendChild(figure);
         });
       }
 
-      deleteForm.addEventListener("submit", function (event) {
-        var expected = confirmInput.getAttribute("data-expected-season") || "";
-        if (confirmInput.value.trim() !== expected) {
-          event.preventDefault();
-          alert("Delete cancelled. Type the season label exactly: " + expected);
-          setOpen(true);
-          confirmInput.focus();
-        }
+      function prepareForm() {
+        seasonKey.disabled = false;
+        quarter.disabled = false;
+        year.disabled = false;
+        quarter.required = true;
+        year.required = true;
+        form.reset();
+        setDeleteOpen(false);
+        setAwardPhoto("winner-photo-current", "winner-photo-preview", "");
+        setAwardPhoto("mip-photo-current", "mip-photo-preview", "");
+        renderSeasonPhotos([]);
+      }
+
+      function openAdd() {
+        prepareForm();
+        seasonKey.disabled = true;
+        seasonKey.value = "";
+        labelFields.hidden = false;
+        deleteBlock.hidden = true;
+        form.action = addAction;
+        title.textContent = "Add a season";
+        layer.showModal();
+      }
+
+      function fillField(id, value) {
+        var field = document.getElementById(id);
+        if (field) field.value = value || "";
+      }
+
+      function openEdit(row) {
+        prepareForm();
+        quarter.disabled = true;
+        year.disabled = true;
+        quarter.required = false;
+        year.required = false;
+        labelFields.hidden = true;
+        deleteBlock.hidden = false;
+        seasonKey.disabled = false;
+        seasonKey.value = row.season;
+        deleteValue.value = row.season;
+        deleteLabel.textContent = row.season;
+        confirmInput.setAttribute("data-expected-season", row.season);
+        confirmInput.placeholder = row.season;
+        fieldIds.forEach(function (id) {
+          fillField(id, row[id]);
+        });
+        setAwardPhoto("winner-photo-current", "winner-photo-preview", row.season_winner_photo_url);
+        setAwardPhoto("mip-photo-current", "mip-photo-preview", row.mip_photo_url);
+        renderSeasonPhotos(row.photos);
+        form.action = updateAction;
+        title.textContent = row.season;
+        layer.showModal();
+      }
+
+      if (addButton) addButton.addEventListener("click", openAdd);
+
+      document.querySelectorAll("[data-edit-season]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var season = button.getAttribute("data-edit-season");
+          var row = bySeason[season];
+          if (row) openEdit(row);
+        });
       });
-    });
+
+      function closeLayer() {
+        if (layer.open) layer.close();
+      }
+
+      closeButton.addEventListener("click", closeLayer);
+      layer.addEventListener("click", function (event) {
+        if (event.target === layer) closeLayer();
+      });
+
+      if (showDelete) {
+        showDelete.addEventListener("click", function () {
+          setDeleteOpen(deletePanel.hidden);
+        });
+      }
+
+      if (cancelDelete) {
+        cancelDelete.addEventListener("click", function () {
+          setDeleteOpen(false);
+        });
+      }
+
+      if (deleteForm && confirmInput) {
+        deleteForm.addEventListener("submit", function (event) {
+          var expected = confirmInput.getAttribute("data-expected-season") || "";
+          if (confirmInput.value.trim() !== expected) {
+            event.preventDefault();
+            alert("Delete cancelled. Type the season label exactly: " + expected);
+            setDeleteOpen(true);
+            confirmInput.focus();
+          }
+        });
+      }
+    })();
   </script>
 {% endblock %}

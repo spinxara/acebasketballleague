@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 import certifi
 from dotenv import load_dotenv
-from flask import Flask, Response, flash, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, emit
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -844,12 +844,26 @@ TEAM_MATCHUP_COLUMNS = (
     "season,team,comp_team,total_games,wins_by_team,team_win_rate,team_members"
 )
 TEAM_MOMENTS_COLUMNS = "id,caption,storage_path,original_filename,created_at"
+TEAM_MOMENTS_SEASON_COLUMNS = TEAM_MOMENTS_COLUMNS + ",season,photo_kind"
+SEASON_PHOTO_SCHEMA_MESSAGE = (
+    "Season photos are not set up yet. Run supabase/season_photos.sql "
+    "in the SQL editor, then try again."
+)
 PLAYERS_COLUMNS = "id,display_name,non_member,active,comments,created_at"
 TEAM_MEMBERS_COLUMNS = (
     "id,season_team,player,player_id,season,season_year,"
     "season_starting_month,created_at"
 )
-GAME_RESULTS_COLUMNS = "id,game_number,away_team,home_team,winner_team,season,date"
+GAME_RESULTS_COLUMNS = (
+    "id,game_number,away_team,home_team,winner_team,season,date,youtube_url"
+)
+YOUTUBE_VIDEO_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "www.youtu.be",
+}
 RECENT_SUNDAY_LIMIT = 12
 TEAM_MOMENTS_BUCKET = "team-moments"
 PLAYER_STATUS_FILTERS = ("all", "active", "inactive", "non_member")
@@ -873,6 +887,18 @@ TEAM_COLOR_CLASSES = {
     "nwo": "team-nps",
     "guest": "team-guest",
 }
+TEAM_DISPLAY_NAMES = {
+    "KCN": "Potassium Cyanide",
+    "NPS": "No Practice Squad",
+    "BK": "The Bankers",
+    "CKD": "Chong Kun Dang",
+    "UBRG": "Unbreakable Roh's Glasses",
+    "ZOO": "ZOO",
+    "NWO": "No Way Out",
+    "MMT": "Mammoth",
+    "KARU": "Kill And Run",
+}
+TOURNAMENT_MATCH_COLUMNS = "id,season,round,match_no,team1,team2,winner,played_at"
 SEASON_LABEL_RE = re.compile(r"^([A-Za-z-]+)\s+(\d{4})$")
 QUARTER_WEIGHT = {
     "Oct-Dec": 4,
@@ -926,6 +952,8 @@ def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
                 raise RuntimeError("The player_played_games table is not set up yet.") from exc
             if "game_results" in body:
                 raise RuntimeError("The game_results table is not set up yet.") from exc
+            if "tournament_matches" in body:
+                raise RuntimeError("The tournament_matches table is not set up yet.") from exc
             raise RuntimeError("Supabase table or file was not found.") from exc
         detail = ""
         try:
@@ -965,10 +993,12 @@ def supabase_request(path, method="GET", body=None, extra_headers=None):
     return payload.decode("utf-8")
 
 
-def fetch_supabase_rows(table, columns, order=None):
+def fetch_supabase_rows(table, columns, order=None, filters=None):
     params = {"select": columns}
     if order:
         params["order"] = order
+    if filters:
+        params.update(filters)
 
     payload = supabase_request(f"{table}?{urllib.parse.urlencode(params)}")
 
@@ -1123,6 +1153,23 @@ def parse_season_label(label):
     return match.group(1), int(match.group(2))
 
 
+def season_slug(label):
+    return (label or "").strip().replace(" ", "-")
+
+
+def season_label_from_slug(slug):
+    match = re.fullmatch(r"(.+)-(\d{4})", (slug or "").strip())
+    if not match:
+        return ""
+    quarter = next(
+        (item for item in SEASON_QUARTERS if item.lower() == match.group(1).lower()),
+        "",
+    )
+    if not quarter:
+        return ""
+    return f"{quarter} {match.group(2)}"
+
+
 def season_sort_key(row):
     quarter, year = parse_season_label(row.get("season") or "")
     year_key = -year if year is not None else 1
@@ -1195,6 +1242,26 @@ def compose_season_label(quarter, year):
     return f"{quarter} {year_value}"
 
 
+def photo_public_url(storage_path):
+    path = (storage_path or "").strip()
+    if not path:
+        return ""
+    return public_moment_url(path)
+
+
+def missing_season_photo_schema(exc):
+    message = str(exc).lower()
+    return (
+        "photo_kind" in message
+        or "season_photos.sql" in message
+        or ("team_moments" in message and "column" in message and "season" in message)
+    )
+
+
+def missing_moment_order_schema(exc):
+    return "sort_order" in str(exc).lower()
+
+
 def load_season_records():
     rows = fetch_supabase_rows("seasons", SEASON_COLUMNS)
     rows.sort(key=season_sort_key)
@@ -1211,16 +1278,173 @@ def load_season_records():
             "season_start_date": (row.get("season_start_date") or "")[:10],
             "season_end_date": (row.get("season_end_date") or "")[:10],
             "season_winner": (row.get("season_winner") or "").strip(),
+            "season_winner_class": team_badge_class(row.get("season_winner")),
             "season_runnerup": (row.get("season_runnerup") or "").strip(),
+            "season_runnerup_class": team_badge_class(row.get("season_runnerup")),
             "tournament_date": (row.get("tournament_date") or "")[:10],
             "tournament_winner": (row.get("tournament_winner") or "").strip(),
+            "tournament_winner_class": team_badge_class(row.get("tournament_winner")),
             "tournament_runnerup": (row.get("tournament_runnerup") or "").strip(),
+            "tournament_runnerup_class": team_badge_class(row.get("tournament_runnerup")),
             "mip_award": (row.get("mip_award") or "").strip(),
             "notes": (row.get("notes") or "").strip(),
             "season_page": (row.get("season_page") or "").strip(),
             "season_page_url": season_page_url(row.get("season_page")),
+            "slug": season_slug(season),
             "status_class": season_status_class(status),
+            "season_winner_photo": "",
+            "season_winner_photo_url": "",
+            "mip_photo": "",
+            "mip_photo_url": "",
+            "photos": [],
         })
+    return seasons
+
+
+def moment_kind_label(photo_kind):
+    kind = (photo_kind or "").strip().lower()
+    if kind == "winner":
+        return "Tournament winner"
+    if kind == "mip":
+        return "MIP"
+    return ""
+
+
+def moment_from_row(row):
+    storage_path = (row.get("storage_path") or "").strip()
+    if not storage_path:
+        return None
+    season = (row.get("season") or "").strip()
+    photo_kind = (row.get("photo_kind") or "").strip().lower()
+    caption = (row.get("caption") or "").strip()
+    kind_label = moment_kind_label(photo_kind)
+    context = ""
+    if season:
+        context = f"{season} · {kind_label}" if kind_label else season
+    if context and caption:
+        display_caption = f"{context} — {caption}"
+    else:
+        display_caption = context or caption
+    return {
+        "id": str(row.get("id") or ""),
+        "caption": caption,
+        "display_caption": display_caption,
+        "storage_path": storage_path,
+        "original_filename": (row.get("original_filename") or "").strip(),
+        "image_url": photo_public_url(storage_path),
+        "created_label": format_moment_date(row.get("created_at")),
+        "season": season,
+        "photo_kind": photo_kind,
+        "kind_label": kind_label,
+    }
+
+
+def load_team_moment_rows():
+    try:
+        return fetch_supabase_rows(
+            "team_moments",
+            TEAM_MOMENTS_SEASON_COLUMNS + ",sort_order",
+            order="sort_order.asc.nullslast,created_at.desc",
+        )
+    except RuntimeError as exc:
+        if missing_moment_order_schema(exc):
+            return fetch_team_moment_rows_by_date()
+        if not missing_season_photo_schema(exc):
+            raise
+        return fetch_supabase_rows(
+            "team_moments",
+            TEAM_MOMENTS_COLUMNS,
+            order="created_at.desc",
+        )
+
+
+def fetch_team_moment_rows_by_date():
+    try:
+        return fetch_supabase_rows(
+            "team_moments",
+            TEAM_MOMENTS_SEASON_COLUMNS,
+            order="created_at.desc",
+        )
+    except RuntimeError as exc:
+        if not missing_season_photo_schema(exc):
+            raise
+        return fetch_supabase_rows(
+            "team_moments",
+            TEAM_MOMENTS_COLUMNS,
+            order="created_at.desc",
+        )
+
+
+def moment_order_available():
+    try:
+        fetch_supabase_rows(
+            "team_moments",
+            "id,sort_order",
+            order="sort_order.asc",
+            filters={"limit": "1"},
+        )
+    except RuntimeError as exc:
+        if missing_moment_order_schema(exc):
+            return False
+        raise
+    return True
+
+
+def next_moment_sort_order():
+    rows = fetch_supabase_rows(
+        "team_moments",
+        "sort_order",
+        order="sort_order.asc.nullslast",
+        filters={"limit": "1"},
+    )
+    if not rows or rows[0].get("sort_order") is None:
+        return 0
+    return int(rows[0]["sort_order"]) - 1
+
+
+def parse_moment_order(value):
+    submitted = []
+    for part in (value or "").split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            submitted.append(str(UUID(token)))
+        except ValueError as exc:
+            raise ValueError("The photo order was not valid.") from exc
+    if len(submitted) != len(set(submitted)):
+        raise ValueError("The photo order was not valid.")
+    return submitted
+
+
+def load_team_moments():
+    moments = []
+    for row in load_team_moment_rows():
+        moment = moment_from_row(row)
+        if moment and moment["id"]:
+            moments.append(moment)
+    return moments
+
+
+def attach_season_photos(seasons, season=None):
+    grouped = {}
+    for moment in load_team_moments():
+        if moment["photo_kind"] not in {"winner", "mip", "season"}:
+            continue
+        if not moment["season"]:
+            continue
+        if season and moment["season"] != season:
+            continue
+        grouped.setdefault(moment["season"], []).append(moment)
+    for row in seasons:
+        related = grouped.get(row["season"], [])
+        winner = next((item for item in related if item["photo_kind"] == "winner"), None)
+        mip = next((item for item in related if item["photo_kind"] == "mip"), None)
+        row["season_winner_photo"] = winner["storage_path"] if winner else ""
+        row["season_winner_photo_url"] = winner["image_url"] if winner else ""
+        row["mip_photo"] = mip["storage_path"] if mip else ""
+        row["mip_photo_url"] = mip["image_url"] if mip else ""
+        row["photos"] = [item for item in related if item["photo_kind"] == "season"]
     return seasons
 
 
@@ -1258,45 +1482,24 @@ def season_payload_from_values(
     }
 
 
-def parse_season_fields(form, prefix=""):
-    if prefix:
-        status = normalize_season_status(form.get(f"status[{prefix}]"))
-        season_start_date = parse_optional_date(
-            form.get(f"season_start_date[{prefix}]"), "Season start date"
-        )
-        season_end_date = parse_optional_date(
-            form.get(f"season_end_date[{prefix}]"), "Season end date"
-        )
-        tournament_date = parse_optional_date(
-            form.get(f"tournament_date[{prefix}]"), "Tournament date"
-        )
-        season_winner = parse_optional_text(form.get(f"season_winner[{prefix}]"))
-        season_runnerup = parse_optional_text(form.get(f"season_runnerup[{prefix}]"))
-        tournament_winner = parse_optional_text(form.get(f"tournament_winner[{prefix}]"))
-        tournament_runnerup = parse_optional_text(
-            form.get(f"tournament_runnerup[{prefix}]")
-        )
-        mip_award = parse_optional_text(form.get(f"mip_award[{prefix}]"))
-        notes = parse_optional_text(form.get(f"notes[{prefix}]"))
-        season_page = parse_optional_text(form.get(f"season_page[{prefix}]"))
-    else:
-        status = normalize_season_status(form.get("status"))
-        season_start_date = parse_optional_date(
-            form.get("season_start_date"), "Season start date"
-        )
-        season_end_date = parse_optional_date(
-            form.get("season_end_date"), "Season end date"
-        )
-        tournament_date = parse_optional_date(
-            form.get("tournament_date"), "Tournament date"
-        )
-        season_winner = parse_optional_text(form.get("season_winner"))
-        season_runnerup = parse_optional_text(form.get("season_runnerup"))
-        tournament_winner = parse_optional_text(form.get("tournament_winner"))
-        tournament_runnerup = parse_optional_text(form.get("tournament_runnerup"))
-        mip_award = parse_optional_text(form.get("mip_award"))
-        notes = parse_optional_text(form.get("notes"))
-        season_page = parse_optional_text(form.get("season_page"))
+def parse_season_fields(form):
+    status = normalize_season_status(form.get("status"))
+    season_start_date = parse_optional_date(
+        form.get("season_start_date"), "Season start date"
+    )
+    season_end_date = parse_optional_date(
+        form.get("season_end_date"), "Season end date"
+    )
+    tournament_date = parse_optional_date(
+        form.get("tournament_date"), "Tournament date"
+    )
+    season_winner = parse_optional_text(form.get("season_winner"))
+    season_runnerup = parse_optional_text(form.get("season_runnerup"))
+    tournament_winner = parse_optional_text(form.get("tournament_winner"))
+    tournament_runnerup = parse_optional_text(form.get("tournament_runnerup"))
+    mip_award = parse_optional_text(form.get("mip_award"))
+    notes = parse_optional_text(form.get("notes"))
+    season_page = parse_optional_text(form.get("season_page"))
 
     return season_payload_from_values(
         status,
@@ -1323,22 +1526,6 @@ def parse_new_season_form(form):
     return payload
 
 
-def parse_bulk_season_rows(form):
-    rows = []
-    for season in form.getlist("season_key"):
-        season = (season or "").strip()
-        if not season:
-            continue
-        quarter, year = parse_season_label(season)
-        if not quarter or year is None:
-            raise ValueError("One of the season labels is invalid.")
-        payload = parse_season_fields(form, prefix=season)
-        payload["season"] = season
-        payload["updated_at"] = utc_now_iso()
-        rows.append(payload)
-    return rows
-
-
 def season_form_error_message(exc):
     message = str(exc)
     if "(409)" in message:
@@ -1352,6 +1539,8 @@ def season_form_error_message(exc):
         )
     if "seasons" in message.lower() and "not found" in message.lower():
         return "The seasons table is not set up yet."
+    if missing_season_photo_schema(exc):
+        return SEASON_PHOTO_SCHEMA_MESSAGE
     return message
 
 
@@ -1376,6 +1565,200 @@ def season_row_changed(current, payload):
         or norm_text(current["notes"]) != payload["notes"]
         or norm_text(current["season_page"]) != payload["season_page"]
     )
+
+
+def checked_form_flag(form, name):
+    return form.get(name) in ("on", "1", "true")
+
+
+def parse_photo_caption(value):
+    caption = (value or "").strip()
+    if len(caption) > MAX_MOMENT_CAPTION:
+        raise ValueError("Captions can be 280 characters or less.")
+    return caption or None
+
+
+def require_season_photo_columns():
+    try:
+        supabase_request("team_moments?select=id,season,photo_kind&limit=1")
+    except RuntimeError as exc:
+        if missing_season_photo_schema(exc):
+            raise RuntimeError(SEASON_PHOTO_SCHEMA_MESSAGE) from exc
+        raise
+
+
+def upload_season_image(file_storage):
+    data, content_type, extension = prepare_moment_image(file_storage)
+    storage_path = f"seasons/{uuid4().hex}{extension}"
+    upload_moment_object(storage_path, data, content_type)
+    return storage_path, (file_storage.filename or "")[:200] or None
+
+
+def upsert_award_moment(season, kind, file_storage, remove, existing, caption):
+    """Create, replace, or remove the one winner or MIP photo for a season."""
+    has_file = file_storage is not None and bool(getattr(file_storage, "filename", ""))
+    if has_file:
+        storage_path, original_filename = upload_season_image(file_storage)
+        try:
+            if existing:
+                update_supabase_row(
+                    "team_moments",
+                    existing["id"],
+                    {
+                        "storage_path": storage_path,
+                        "caption": caption,
+                        "season": season,
+                        "photo_kind": kind,
+                        "original_filename": original_filename,
+                    },
+                )
+                if existing["storage_path"] != storage_path:
+                    delete_moment_object(existing["storage_path"])
+            else:
+                insert_supabase_row(
+                    "team_moments",
+                    {
+                        "season": season,
+                        "photo_kind": kind,
+                        "storage_path": storage_path,
+                        "caption": caption,
+                        "original_filename": original_filename,
+                    },
+                )
+        except Exception:
+            delete_moment_object(storage_path)
+            raise
+        return True
+    if remove and existing:
+        delete_supabase_row("team_moments", existing["id"])
+        delete_moment_object(existing["storage_path"])
+        return True
+    if existing and (existing["caption"] or None) != (caption or None):
+        update_supabase_row("team_moments", existing["id"], {"caption": caption})
+        return True
+    return False
+
+
+def season_media_requested(form, files):
+    winner_file = files.get("season_winner_photo")
+    mip_file = files.get("mip_photo")
+    if winner_file is not None and winner_file.filename:
+        return True
+    if mip_file is not None and mip_file.filename:
+        return True
+    if any(item and item.filename for item in files.getlist("season_photos")):
+        return True
+    if checked_form_flag(form, "remove_season_winner_photo"):
+        return True
+    if checked_form_flag(form, "remove_mip_photo"):
+        return True
+    if form.getlist("delete_photo"):
+        return True
+    return any(key.startswith("photo_caption[") for key in form.keys())
+
+
+def apply_season_media(season, form, files, names):
+    """Save award photos and extra season photos into team_moments."""
+    related = [
+        moment for moment in load_team_moments()
+        if moment["season"] == season and moment["photo_kind"] in {"winner", "mip", "season"}
+    ]
+    if not related and not season_media_requested(form, files):
+        return False
+    if season_media_requested(form, files):
+        require_season_photo_columns()
+    winner = next((moment for moment in related if moment["photo_kind"] == "winner"), None)
+    mip = next((moment for moment in related if moment["photo_kind"] == "mip"), None)
+    changed = upsert_award_moment(
+        season,
+        "winner",
+        files.get("season_winner_photo"),
+        checked_form_flag(form, "remove_season_winner_photo"),
+        winner,
+        parse_optional_text(names.get("tournament_winner")),
+    )
+    changed = upsert_award_moment(
+        season,
+        "mip",
+        files.get("mip_photo"),
+        checked_form_flag(form, "remove_mip_photo"),
+        mip,
+        parse_optional_text(names.get("mip_award")),
+    ) or changed
+    changed = sync_extra_season_photos(
+        season,
+        form,
+        files,
+        [moment for moment in related if moment["photo_kind"] == "season"],
+    ) or changed
+    return changed
+
+
+def sync_extra_season_photos(season, form, files, existing):
+    caption = parse_photo_caption(form.get("season_photos_caption"))
+    delete_ids = set()
+    for photo_id in form.getlist("delete_photo"):
+        photo_id = (photo_id or "").strip()
+        if not photo_id:
+            continue
+        try:
+            UUID(photo_id)
+        except ValueError as exc:
+            raise ValueError("One of the season photos could not be found.") from exc
+        delete_ids.add(photo_id)
+
+    changed = False
+    for photo in existing:
+        if photo["id"] in delete_ids:
+            delete_supabase_row("team_moments", photo["id"])
+            delete_moment_object(photo["storage_path"])
+            changed = True
+            continue
+        next_caption = parse_photo_caption(form.get(f"photo_caption[{photo['id']}]"))
+        if next_caption != (photo["caption"] or None):
+            update_supabase_row(
+                "team_moments",
+                photo["id"],
+                {"caption": next_caption},
+            )
+            changed = True
+
+    for file_storage in files.getlist("season_photos"):
+        if not file_storage or not file_storage.filename:
+            continue
+        storage_path, original_filename = upload_season_image(file_storage)
+        try:
+            insert_supabase_row(
+                "team_moments",
+                {
+                    "season": season,
+                    "photo_kind": "season",
+                    "storage_path": storage_path,
+                    "caption": caption,
+                    "original_filename": original_filename,
+                },
+            )
+        except RuntimeError:
+            delete_moment_object(storage_path)
+            raise
+        changed = True
+    return changed
+
+
+def delete_season_media(season_row):
+    if not any(
+        moment["season"] == season_row["season"]
+        and moment["photo_kind"] in {"winner", "mip", "season"}
+        for moment in load_team_moments()
+    ):
+        return
+    for moment in load_team_moments():
+        if moment["season"] != season_row["season"]:
+            continue
+        if moment["photo_kind"] not in {"winner", "mip", "season"}:
+            continue
+        delete_supabase_row("team_moments", moment["id"])
+        delete_moment_object(moment["storage_path"])
 
 
 def stat_count(value):
@@ -1661,28 +2044,6 @@ def player_form_error_message(exc):
     return message
 
 
-def load_team_moments():
-    rows = fetch_supabase_rows(
-        "team_moments",
-        TEAM_MOMENTS_COLUMNS,
-        order="created_at.desc",
-    )
-    moments = []
-    for row in rows:
-        storage_path = (row.get("storage_path") or "").strip()
-        if not storage_path:
-            continue
-        moments.append({
-            "id": row.get("id") or "",
-            "caption": (row.get("caption") or "").strip(),
-            "storage_path": storage_path,
-            "original_filename": (row.get("original_filename") or "").strip(),
-            "image_url": public_moment_url(storage_path),
-            "created_label": format_moment_date(row.get("created_at")),
-        })
-    return moments
-
-
 def fetch_moment_by_id(moment_id):
     encoded = urllib.parse.quote(str(moment_id), safe="")
     payload = supabase_request(
@@ -1707,13 +2068,27 @@ def robots_txt():
     return Response(body, mimetype="text/plain")
 
 
+def sitemap_paths():
+    paths = list(PUBLIC_SITEMAP_PATHS)
+    try:
+        for row in load_season_records():
+            slug = row.get("slug") or ""
+            if slug:
+                path = f"/season/{slug}"
+                if path not in paths:
+                    paths.append(path)
+    except RuntimeError:
+        pass
+    return paths
+
+
 @app.route("/sitemap.xml")
 def sitemap_xml():
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
-    for path in PUBLIC_SITEMAP_PATHS:
+    for path in sitemap_paths():
         lines.append("  <url>")
         lines.append(f"    <loc>{SITE_URL}{path}</loc>")
         lines.append("  </url>")
@@ -1746,6 +2121,135 @@ def league_rules():
     return render_template("public/rules.html", active="rules")
 
 
+def format_record_date(value):
+    text = str(value or "").strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        try:
+            stamp = datetime.strptime(text[:10], "%Y-%m-%d")
+        except ValueError:
+            return text[:10]
+        return stamp.strftime("%B %d, %Y").replace(" 0", " ")
+    return format_moment_date(value)
+
+
+def format_record_win_rate(wins, games):
+    if not games:
+        return "—"
+    return f"{(wins / games) * 100:.2f}%"
+
+
+def team_logo_static_path(code):
+    key = (code or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9]+", key):
+        return ""
+    folder = os.path.join(app.static_folder, "teams")
+    for ext in ("png", "jpg"):
+        filename = f"{key}.{ext}"
+        if os.path.isfile(os.path.join(folder, filename)):
+            return f"teams/{filename}"
+    return ""
+
+
+def season_roster_sections(members):
+    sections = []
+    for team, rows in group_roster_by_team(members):
+        if not rows:
+            continue
+        code = (team or "").strip().upper()
+        sections.append({
+            "code": code or team,
+            "name": TEAM_DISPLAY_NAMES.get(code, team),
+            "show_name": code in TEAM_DISPLAY_NAMES,
+            "team_class": team_badge_class(team),
+            "logo": team_logo_static_path(code),
+            "players": [(row.get("player") or "—").strip() or "—" for row in rows],
+        })
+    return sections
+
+
+def season_standings(rows):
+    totals = {}
+    for row in rows:
+        away = (row.get("away_team") or "").strip()
+        home = (row.get("home_team") or "").strip()
+        winner = (row.get("winner_team") or "").strip()
+        for team in (away, home):
+            if not team:
+                continue
+            bucket = totals.setdefault(team, {"wins": 0, "games": 0})
+            bucket["games"] += 1
+            if team == winner:
+                bucket["wins"] += 1
+    standings = []
+    for team, bucket in totals.items():
+        games = bucket["games"]
+        wins = bucket["wins"]
+        standings.append({
+            "team": team,
+            "team_class": team_badge_class(team),
+            "wins": wins,
+            "losses": games - wins,
+            "win_rate": format_record_win_rate(wins, games),
+            "rate_value": (wins / games) if games else 0,
+        })
+    standings.sort(key=lambda item: (-item["rate_value"], -item["wins"], item["team"]))
+    return standings
+
+
+def season_weeks(rows):
+    grouped = {}
+    for row in rows:
+        day = str(row.get("date") or "")[:10]
+        if not day:
+            continue
+        grouped.setdefault(day, []).append({
+            "game_number": stat_count(row.get("game_number")),
+            "away_team": (row.get("away_team") or "").strip(),
+            "home_team": (row.get("home_team") or "").strip(),
+            "away_class": team_badge_class(row.get("away_team")),
+            "home_class": team_badge_class(row.get("home_team")),
+            "winner_team": (row.get("winner_team") or "").strip(),
+            "winner_class": team_badge_class(row.get("winner_team")),
+            "youtube_url": (row.get("youtube_url") or "").strip(),
+        })
+    weeks = []
+    for index, day in enumerate(sorted(grouped), start=1):
+        games = sorted(grouped[day], key=lambda item: item["game_number"])
+        weeks.append({
+            "week": index,
+            "date": format_record_date(day),
+            "games": games,
+        })
+    return weeks
+
+
+def load_tournament_matches(season):
+    rows = fetch_supabase_rows(
+        "tournament_matches",
+        TOURNAMENT_MATCH_COLUMNS,
+        order="match_no.asc",
+        filters={"season": f"eq.{season}"},
+    )
+    matches = []
+    for row in rows:
+        team1 = (row.get("team1") or "").strip()
+        team2 = (row.get("team2") or "").strip()
+        winner = (row.get("winner") or "").strip()
+        matches.append({
+            "round": (row.get("round") or "").strip(),
+            "match_no": stat_count(row.get("match_no")),
+            "team1": team1,
+            "team2": team2,
+            "team1_class": team_badge_class(team1),
+            "team2_class": team_badge_class(team2),
+            "winner": winner,
+            "winner_class": team_badge_class(winner),
+            "played_at": format_record_date(row.get("played_at")),
+        })
+    matches.sort(key=lambda item: item["match_no"])
+    return matches
+
+
 @app.route("/season-results")
 def season_results():
     load_error = None
@@ -1759,6 +2263,47 @@ def season_results():
         "public/season_results.html",
         active="season-results",
         seasons=seasons,
+        load_error=load_error,
+    )
+
+
+@app.route("/season/<slug>")
+def season_record(slug):
+    label = season_label_from_slug(slug)
+    if not label:
+        abort(404)
+
+    load_error = None
+    season = None
+    roster = []
+    standings = []
+    weeks = []
+    matches = []
+    try:
+        seasons = attach_season_photos(load_season_records())
+        season = next((row for row in seasons if row["season"] == label), None)
+        if season is None:
+            abort(404)
+        season["start_label"] = format_record_date(season.get("season_start_date"))
+        season["end_label"] = format_record_date(season.get("season_end_date"))
+        season["tournament_date_label"] = format_record_date(season.get("tournament_date"))
+        roster = season_roster_sections(load_team_members(label))
+        games = load_season_game_results(label)
+        standings = season_standings(games)
+        weeks = season_weeks(games)
+        matches = load_tournament_matches(label)
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    return render_template(
+        "public/season.html",
+        active="season-results",
+        season_label=label,
+        season=season,
+        roster=roster,
+        standings=standings,
+        weeks=weeks,
+        matches=matches,
         load_error=load_error,
     )
 
@@ -2012,6 +2557,26 @@ def admin_seasons():
         try:
             payload = parse_new_season_form(request.form)
             insert_supabase_row("seasons", payload)
+            try:
+                apply_season_media(
+                    payload["season"],
+                    request.form,
+                    request.files,
+                    payload,
+                )
+            except ValueError as exc:
+                flash(
+                    f"Added {payload['season']}, but photos could not be saved. {exc}",
+                    "error",
+                )
+                return redirect(url_for("admin_seasons", status=status))
+            except RuntimeError as exc:
+                flash(
+                    f"Added {payload['season']}, but photos could not be saved. "
+                    f"{season_form_error_message(exc)}",
+                    "error",
+                )
+                return redirect(url_for("admin_seasons", status=status))
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("admin_seasons", status=status))
@@ -2025,7 +2590,7 @@ def admin_seasons():
     load_error = None
     seasons = []
     try:
-        seasons = filter_seasons(load_season_records(), status)
+        seasons = attach_season_photos(filter_seasons(load_season_records(), status))
     except RuntimeError as exc:
         load_error = str(exc)
 
@@ -2043,58 +2608,50 @@ def admin_seasons():
     )
 
 
-@app.route("/admin/seasons/bulk-update", methods=["POST"])
-def admin_bulk_update_seasons():
+@app.route("/admin/seasons/update", methods=["POST"])
+def admin_update_season():
     status = (request.args.get("status") or request.form.get("status") or "all")
     status = status.strip().lower()
     if status not in SEASON_STATUS_FILTERS:
         status = "all"
 
-    try:
-        rows = parse_bulk_season_rows(request.form)
-    except ValueError as exc:
-        flash(str(exc), "error")
-        return redirect(url_for("admin_seasons", status=status))
-
-    if not rows:
-        flash("No seasons to update.", "error")
+    season = (request.form.get("season") or "").strip()
+    quarter, year = parse_season_label(season)
+    if not season or not quarter or year is None:
+        flash("That season label is invalid.", "error")
         return redirect(url_for("admin_seasons", status=status))
 
     try:
-        current_by_season = {
-            row["season"]: row for row in load_season_records()
-        }
-        updated_count = 0
-        for row in rows:
-            current = current_by_season.get(row["season"])
-            if not current:
-                flash("That season could not be found.", "error")
-                return redirect(url_for("admin_seasons", status=status))
-
-            if not season_row_changed(current, row):
-                continue
-
-            patch = {
-                key: value
-                for key, value in row.items()
-                if key != "season"
-            }
-            updated = update_supabase_row_by("seasons", "season", row["season"], patch)
+        payload = parse_season_fields(request.form)
+        payload["season"] = season
+        payload["updated_at"] = utc_now_iso()
+        current = next(
+            (row for row in load_season_records() if row["season"] == season),
+            None,
+        )
+        if not current:
+            flash("That season could not be found.", "error")
+            return redirect(url_for("admin_seasons", status=status))
+        attach_season_photos([current], season)
+        text_changed = season_row_changed(current, payload)
+        media_changed = apply_season_media(season, request.form, request.files, payload)
+        if text_changed:
+            patch = {key: value for key, value in payload.items() if key != "season"}
+            updated = update_supabase_row_by("seasons", "season", season, patch)
             if not updated:
                 flash("That season could not be found.", "error")
                 return redirect(url_for("admin_seasons", status=status))
-            updated_count += 1
+        if not text_changed and not media_changed:
+            flash("No changes to save.", "success")
+            return redirect(url_for("admin_seasons", status=status))
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin_seasons", status=status))
     except RuntimeError as exc:
         flash(season_form_error_message(exc), "error")
         return redirect(url_for("admin_seasons", status=status))
 
-    if updated_count:
-        flash(
-            f"Updated {updated_count} season{'s' if updated_count != 1 else ''}.",
-            "success",
-        )
-    else:
-        flash("No changes to save.", "success")
+    flash(f"Updated {season}.", "success")
     return redirect(url_for("admin_seasons", status=status))
 
 
@@ -2115,6 +2672,13 @@ def admin_delete_season():
         return redirect(url_for("admin_seasons", status=status))
 
     try:
+        current = next(
+            (row for row in load_season_records() if row["season"] == season),
+            None,
+        )
+        if current:
+            attach_season_photos([current], season)
+            delete_season_media(current)
         delete_supabase_row_by("seasons", "season", season)
     except RuntimeError as exc:
         flash(season_form_error_message(exc), "error")
@@ -2413,6 +2977,36 @@ def games_roster_and_guests(members, players):
     return roster, guests, by_id, roster_team_by_id
 
 
+def normalize_youtube_url(value, game_label="That game"):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or host not in YOUTUBE_VIDEO_HOSTS:
+        raise ValueError(f"{game_label} needs a YouTube link.")
+    parts = [part for part in (parsed.path or "").split("/") if part]
+    video_id = ""
+    if host in {"youtu.be", "www.youtu.be"}:
+        video_id = parts[0] if parts else ""
+    elif parts and parts[0] in {"shorts", "embed", "live"} and len(parts) > 1:
+        video_id = parts[1]
+    elif parts and parts[0] == "watch":
+        video_id = (urllib.parse.parse_qs(parsed.query).get("v") or [""])[0]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,}", video_id or ""):
+        raise ValueError(f"{game_label} needs a YouTube link.")
+    return urllib.parse.urlunparse((
+        "https",
+        host,
+        parsed.path or "",
+        "",
+        parsed.query or "",
+        "",
+    ))
+
+
 def load_season_game_results(season):
     encoded = urllib.parse.quote(str(season), safe="")
     payload = supabase_request(
@@ -2438,10 +3032,12 @@ def group_recent_sundays(rows, limit=RECENT_SUNDAY_LIMIT):
             grouped[day] = []
             order.append(day)
         grouped[day].append({
+            "id": row.get("id"),
             "game_number": stat_count(row.get("game_number")),
             "away_team": (row.get("away_team") or "").strip(),
             "home_team": (row.get("home_team") or "").strip(),
             "winner_team": (row.get("winner_team") or "").strip(),
+            "youtube_url": (row.get("youtube_url") or "").strip(),
         })
     sundays = []
     for day in order:
@@ -2543,6 +3139,9 @@ def parse_sunday_games_form(form, players_by_id, roster_team_by_id):
             "away_team": away,
             "home_team": home,
             "winner_team": winner,
+            "youtube_url": normalize_youtube_url(
+                game.get("youtube_url"), f"Game {expected}"
+            ),
             "season": season,
             "date": f"{day}T00:00:00+00:00",
             "lineup": lineup,
@@ -2589,12 +3188,29 @@ def insert_game_result_row(game, created_at=None):
         "away_team": game["away_team"],
         "home_team": game["home_team"],
         "winner_team": game["winner_team"],
+        "youtube_url": game.get("youtube_url"),
         "season": game["season"],
         "date": game["date"],
     }
     if created_at:
         row["created_at"] = created_at
     return insert_supabase_row("game_results", row)
+
+
+def update_game_youtube(season, game_id, youtube_url):
+    encoded_season = urllib.parse.quote(str(season), safe="")
+    payload = supabase_request(
+        f"game_results?id=eq.{int(game_id)}&season=eq.{encoded_season}",
+        method="PATCH",
+        body={"youtube_url": youtube_url},
+        extra_headers={"Prefer": "return=representation"},
+    )
+    data = parse_supabase_json(payload, empty=[])
+    if isinstance(data, list) and data:
+        return data[0]
+    if isinstance(data, dict) and data.get("id") is not None:
+        return data
+    raise ValueError("That game is not in this season.")
 
 
 def save_sunday_games(games):
@@ -2662,6 +3278,11 @@ def games_form_error_message(exc):
         return "The player_played_games table is not set up yet."
     if "game_results" in lowered and "not found" in lowered:
         return "The game_results table is not set up yet."
+    if "youtube_url" in lowered and ("column" in lowered or "schema" in lowered):
+        return (
+            "YouTube links are not set up yet. Run "
+            "supabase/game_results_add_youtube_url.sql in the SQL editor, then try again."
+        )
     return message
 
 
@@ -2704,7 +3325,7 @@ def render_games_page(season, day, posted_payload=None, load_error=None):
         try:
             page = load_games_page(season, day)
         except RuntimeError as exc:
-            load_error = str(exc)
+            load_error = games_form_error_message(exc)
 
     initial_payload = None
     if posted_payload:
@@ -2732,6 +3353,28 @@ def render_games_page(season, day, posted_payload=None, load_error=None):
 
 @app.route("/admin/games", methods=["GET", "POST"])
 def admin_games():
+    if request.method == "POST" and request.form.get("action") == "update_youtube":
+        season = (request.form.get("season") or "").strip()
+        day = (request.form.get("date") or "").strip()
+        try:
+            game_id = int(request.form.get("game_id") or "")
+        except (TypeError, ValueError):
+            flash("Choose a saved game.", "error")
+            return redirect(url_for("admin_games", season=season, date=day))
+        try:
+            youtube_url = normalize_youtube_url(request.form.get("youtube_url"))
+            update_game_youtube(season, game_id, youtube_url)
+        except ValueError as exc:
+            flash(str(exc), "error")
+        except RuntimeError as exc:
+            flash(games_form_error_message(exc), "error")
+        else:
+            flash(
+                "Cleared the YouTube link." if youtube_url is None else "Saved the YouTube link.",
+                "success",
+            )
+        return redirect(url_for("admin_games", season=season, date=day))
+
     if request.method == "POST":
         season = (request.form.get("season") or "").strip()
         day = (request.form.get("date") or "").strip()
@@ -2798,15 +3441,15 @@ def admin_moments():
                 data, content_type, extension = prepare_moment_image(file_storage)
                 storage_path = f"{uuid4().hex}{extension}"
                 upload_moment_object(storage_path, data, content_type)
+                row = {
+                    "caption": caption or None,
+                    "storage_path": storage_path,
+                    "original_filename": (file_storage.filename or "")[:200],
+                }
+                if moment_order_available():
+                    row["sort_order"] = next_moment_sort_order()
                 try:
-                    insert_supabase_row(
-                        "team_moments",
-                        {
-                            "caption": caption or None,
-                            "storage_path": storage_path,
-                            "original_filename": (file_storage.filename or "")[:200],
-                        },
-                    )
+                    insert_supabase_row("team_moments", row)
                 except RuntimeError:
                     delete_moment_object(storage_path)
                     raise
@@ -2823,8 +3466,10 @@ def admin_moments():
 
     load_error = None
     moments = []
+    order_ready = False
     try:
         moments = load_team_moments()
+        order_ready = moment_order_available()
     except RuntimeError as exc:
         load_error = str(exc)
 
@@ -2833,7 +3478,34 @@ def admin_moments():
         active="moments",
         moments=moments,
         load_error=load_error,
+        order_ready=order_ready,
+        moment_order=",".join(moment["id"] for moment in moments),
     )
+
+
+@app.route("/admin/moments/order", methods=["POST"])
+def admin_moment_order():
+    try:
+        submitted = parse_moment_order(request.form.get("order"))
+        current = {str(UUID(moment["id"])) for moment in load_team_moments()}
+        if set(submitted) != current:
+            raise ValueError("The photo list changed. Reload the page and try again.")
+        for index, moment_id in enumerate(submitted, start=1):
+            update_supabase_row("team_moments", moment_id, {"sort_order": index})
+    except ValueError as exc:
+        flash(str(exc), "error")
+    except RuntimeError as exc:
+        if missing_moment_order_schema(exc):
+            flash(
+                "Photo order is not set up yet. Run supabase/team_moments_add_sort_order.sql "
+                "in the SQL editor, then try again.",
+                "error",
+            )
+        else:
+            flash(str(exc), "error")
+    else:
+        flash("Saved the photo order.", "success")
+    return redirect(url_for("admin_moments"))
 
 
 @app.route("/admin/moments/<moment_id>/delete", methods=["POST"])
@@ -2866,6 +3538,12 @@ def request_too_large(_error):
     if request.path.startswith("/admin/moments"):
         flash("Those photos are too large. Each file must be 10MB or smaller.", "error")
         return redirect(url_for("admin_moments"))
+    if request.path.startswith("/admin/seasons"):
+        flash("Those photos are too large. Each file must be 10MB or smaller.", "error")
+        status = (request.args.get("status") or "all").strip().lower()
+        if status not in SEASON_STATUS_FILTERS:
+            status = "all"
+        return redirect(url_for("admin_seasons", status=status))
     return "Request too large", 413
 
 

@@ -80,7 +80,7 @@
               </select>
             </div>
           </div>
-          <p class="note">The team that sits out game 1 is away next, and that game’s away team is home next. Games 4–6 repeat 1–3. Changing game 1 resets lineups and winners.</p>
+          <p class="note">The team that sits out game 1 is away next, and that game’s away team is home next. Games 4–6 repeat 1–3. Changing game 1 resets lineups, winners, and YouTube links.</p>
 
           <div id="game-cards" class="games-list"></div>
 
@@ -104,6 +104,7 @@
                   <th>Game</th>
                   <th>Matchup</th>
                   <th>Winner</th>
+                  <th>Video</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,6 +113,25 @@
                     <td>{{ game.game_number }}</td>
                     <td>{{ game.away_team }} @ {{ game.home_team }}</td>
                     <td>{{ game.winner_team or "—" }}</td>
+                    <td>
+                      {% if game.youtube_url %}
+                        <a class="table-link" href="{{ game.youtube_url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                      {% endif %}
+                      <form class="games-video-form" method="post" action="{{ url_for('admin_games') }}">
+                        <input type="hidden" name="action" value="update_youtube" />
+                        <input type="hidden" name="season" value="{{ season }}" />
+                        <input type="hidden" name="date" value="{{ game_date }}" />
+                        <input type="hidden" name="game_id" value="{{ game.id }}" />
+                        <input
+                          type="url"
+                          name="youtube_url"
+                          value="{{ game.youtube_url }}"
+                          placeholder="YouTube link"
+                          aria-label="YouTube link for game {{ game.game_number }} on {{ sunday.date }}"
+                        />
+                        <button class="login-submit roster-small-btn" type="submit">Save</button>
+                      </form>
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -166,6 +186,7 @@
         guests.forEach(function (player) { byId[player.id] = player; });
 
         var winners = [null, null, null, null, null, null];
+        var videos = ["", "", "", "", "", ""];
         var lineups = [];
         var locked = [];
 
@@ -221,6 +242,7 @@
           lineups = [];
           locked = [];
           winners = [null, null, null, null, null, null];
+          videos = ["", "", "", "", "", ""];
           var rotation = currentRotation();
           for (var i = 0; i < 6; i++) {
             var game = rotation[i] || {};
@@ -324,6 +346,7 @@
             var home = rotation[index].home;
             winners[index] = String(game.winner_team || "").toUpperCase() || null;
             if (winners[index] !== away && winners[index] !== home) winners[index] = null;
+            videos[index] = String(game.youtube_url || "");
             lineups[index][away] = [];
             lineups[index][home] = [];
             locked[index][away] = {};
@@ -441,6 +464,21 @@
             });
             card.appendChild(winnerRow);
 
+            var videoRow = el("div", "games-video-row");
+            var videoLabel = el("label", "", "YouTube");
+            var videoInput = document.createElement("input");
+            videoInput.type = "url";
+            videoInput.id = "game-youtube-" + index;
+            videoInput.placeholder = "Optional YouTube link";
+            videoInput.value = videos[index] || "";
+            videoLabel.setAttribute("for", videoInput.id);
+            videoInput.addEventListener("input", function () {
+              videos[index] = videoInput.value;
+            });
+            videoRow.appendChild(videoLabel);
+            videoRow.appendChild(videoInput);
+            card.appendChild(videoRow);
+
             var columns = el("div", "games-teams");
             columns.appendChild(renderTeamColumn(index, game.away));
             columns.appendChild(renderTeamColumn(index, game.home));
@@ -492,6 +530,7 @@
               away_team: game.away,
               home_team: game.home,
               winner_team: winners[index],
+              youtube_url: videos[index] || "",
               players: players
             };
           });
