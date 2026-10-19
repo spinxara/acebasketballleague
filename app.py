@@ -849,6 +849,8 @@ TEAM_MEMBERS_COLUMNS = (
     "id,season_team,player,player_id,season,season_year,"
     "season_starting_month,created_at"
 )
+GAME_RESULTS_COLUMNS = "id,game_number,away_team,home_team,winner_team,season,date"
+RECENT_SUNDAY_LIMIT = 12
 TEAM_MOMENTS_BUCKET = "team-moments"
 PLAYER_STATUS_FILTERS = ("all", "active", "inactive", "non_member")
 # Matches seasons_status_check in Supabase: planned | active | completed
@@ -920,6 +922,10 @@ def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
                 raise RuntimeError("The seasons table is not set up yet.") from exc
             if "team_members" in body:
                 raise RuntimeError("The team_members table is not set up yet.") from exc
+            if "player_played_games" in body:
+                raise RuntimeError("The player_played_games table is not set up yet.") from exc
+            if "game_results" in body:
+                raise RuntimeError("The game_results table is not set up yet.") from exc
             raise RuntimeError("Supabase table or file was not found.") from exc
         detail = ""
         try:
@@ -2313,17 +2319,462 @@ def admin_roster_clear():
     return redirect(url_for("admin_roster", season=season))
 
 
-@app.route("/admin/games")
-def admin_games():
+def canonical_player_id(value):
+    try:
+        return str(UUID(str(value).strip()))
+    except (ValueError, AttributeError, TypeError):
+        return ""
+
+
+def default_game_date(value=None):
+    text = (value or "").strip()
+    if text:
+        try:
+            datetime.strptime(text, "%Y-%m-%d")
+            return text
+        except ValueError:
+            pass
+    today = datetime.now().date()
+    days_since_sunday = (today.weekday() + 1) % 7
+    return (today - timedelta(days=days_since_sunday)).isoformat()
+
+
+def pick_default_games_season(seasons):
+    for status in ("active", "planned"):
+        for row in seasons:
+            if (row.get("status") or "").strip().lower() == status and row.get("season"):
+                return row["season"]
+    for row in seasons:
+        if row.get("season"):
+            return row["season"]
+    return ""
+
+
+def sunday_rotation_from_first(away, home):
+    """Games 2–3 follow game 1: the sitting team is away next, and the previous away team is home next. Games 4–6 repeat 1–3."""
+    if away not in TEAM_NAMES or home not in TEAM_NAMES or away == home:
+        raise ValueError("Game 1 needs two different teams.")
+    games = []
+    for _ in range(3):
+        games.append((away, home))
+        sitter = next(team for team in TEAM_NAMES if team not in (away, home))
+        away, home = sitter, away
+    return tuple(games * 2)
+
+
+def games_player_label(player):
+    name = (player.get("display_name") or "").strip()
+    comments = (player.get("comments") or "").strip()
+    return {
+        "id": canonical_player_id(player.get("id")),
+        "name": name,
+        "non_member": bool(player.get("non_member")),
+        "comments": comments,
+    }
+
+
+def games_roster_and_guests(members, players):
+    labeled = []
+    by_id = {}
+    by_name = {}
+    for player in players:
+        entry = games_player_label(player)
+        if not entry["id"] or not entry["name"]:
+            continue
+        labeled.append(entry)
+        by_id[entry["id"]] = player
+        by_name.setdefault(entry["name"].strip().lower(), entry["id"])
+
+    roster = []
+    roster_ids = set()
+    roster_team_by_id = {}
+    for member in members:
+        team = (member.get("season_team") or "").strip().upper()
+        if team not in TEAM_NAMES:
+            continue
+        player_id = canonical_player_id(member.get("player_id"))
+        if not player_id:
+            player_id = by_name.get((member.get("player") or "").strip().lower(), "")
+        if not player_id or player_id not in by_id or player_id in roster_ids:
+            continue
+        roster_ids.add(player_id)
+        roster_team_by_id[player_id] = team
+        entry = games_player_label(by_id[player_id])
+        entry["team"] = team
+        roster.append(entry)
+
+    roster.sort(key=lambda row: (row["team"], row["name"].lower()))
+    guests = []
+    for entry in labeled:
+        if entry["id"] in roster_ids:
+            continue
+        guests.append(entry)
+    guests.sort(key=lambda row: row["name"].lower())
+    return roster, guests, by_id, roster_team_by_id
+
+
+def load_season_game_results(season):
+    encoded = urllib.parse.quote(str(season), safe="")
+    payload = supabase_request(
+        "game_results?select="
+        f"{GAME_RESULTS_COLUMNS}&season=eq.{encoded}&order=date.desc,game_number.asc"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    return rows
+
+
+def group_recent_sundays(rows, limit=RECENT_SUNDAY_LIMIT):
+    grouped = {}
+    order = []
+    for row in rows:
+        day = str(row.get("date") or "")[:10]
+        if not day:
+            continue
+        if day not in grouped:
+            if len(order) >= limit:
+                continue
+            grouped[day] = []
+            order.append(day)
+        grouped[day].append({
+            "game_number": stat_count(row.get("game_number")),
+            "away_team": (row.get("away_team") or "").strip(),
+            "home_team": (row.get("home_team") or "").strip(),
+            "winner_team": (row.get("winner_team") or "").strip(),
+        })
+    sundays = []
+    for day in order:
+        games = sorted(grouped[day], key=lambda item: item["game_number"])
+        sundays.append({"date": day, "games": games})
+    return sundays
+
+
+def games_exist_for_date(season, day):
+    encoded_season = urllib.parse.quote(str(season), safe="")
+    start = urllib.parse.quote(f"{day}T00:00:00+00:00", safe="")
+    next_day = (datetime.strptime(day, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
+    end = urllib.parse.quote(f"{next_day}T00:00:00+00:00", safe="")
+    payload = supabase_request(
+        "game_results?select=id"
+        f"&season=eq.{encoded_season}&date=gte.{start}&date=lt.{end}&limit=1"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    return isinstance(rows, list) and len(rows) > 0
+
+
+def parse_sunday_games_form(form, players_by_id, roster_team_by_id):
+    season = (form.get("season") or "").strip()
+    quarter, year = parse_season_label(season)
+    if not quarter or year is None:
+        raise ValueError("Choose a valid season.")
+    day = (form.get("date") or "").strip()
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("Choose a valid game date.") from exc
+
+    try:
+        payload = json.loads(form.get("payload") or "")
+    except json.JSONDecodeError as exc:
+        raise ValueError("The Sunday form was incomplete. Reload the page and try again.") from exc
+    games = payload.get("games") if isinstance(payload, dict) else None
+    if not isinstance(games, list) or len(games) != 6:
+        raise ValueError("A Sunday needs all six games.")
+
+    def game_sort_key(game):
+        try:
+            return int(game.get("game_number"))
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
+    ordered = sorted(games, key=game_sort_key)
+    normalized = []
+    for expected, game in enumerate(ordered, start=1):
+        if not isinstance(game, dict):
+            raise ValueError(f"Game {expected} is incomplete.")
+        try:
+            number = int(game.get("game_number"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Game {expected} is incomplete.") from exc
+        if number != expected:
+            raise ValueError("Games must be numbered 1 through 6.")
+        away = str(game.get("away_team") or "").strip().upper()
+        home = str(game.get("home_team") or "").strip().upper()
+        winner = str(game.get("winner_team") or "").strip().upper()
+        if away not in TEAM_NAMES or home not in TEAM_NAMES or away == home:
+            raise ValueError(f"Game {expected} needs two different teams.")
+        if winner not in {away, home}:
+            raise ValueError(f"Pick a winner for game {expected}.")
+        lineup_rows = game.get("players")
+        if not isinstance(lineup_rows, list):
+            raise ValueError(f"Game {expected} is missing a lineup.")
+
+        seen = set()
+        lineup = []
+        counts = {away: 0, home: 0}
+        for entry in lineup_rows:
+            if not isinstance(entry, dict):
+                raise ValueError(f"Game {expected} has an invalid lineup.")
+            player_id = canonical_player_id(entry.get("player_id"))
+            if not player_id or player_id not in players_by_id:
+                raise ValueError(f"Game {expected} has a player who is not in the players list.")
+            playing_team = str(entry.get("playing_team") or "").strip().upper()
+            if playing_team not in {away, home}:
+                raise ValueError(
+                    f"Game {expected} has a player on a team that is not playing."
+                )
+            if player_id in seen:
+                raise ValueError(f"Game {expected} lists a player twice.")
+            seen.add(player_id)
+            counts[playing_team] += 1
+            player = players_by_id[player_id]
+            lineup.append({
+                "name": (player.get("display_name") or "").strip(),
+                "playing_team": playing_team,
+                "season": season,
+                "guest": roster_team_by_id.get(player_id) != playing_team,
+                "player_id": player_id,
+            })
+        if counts[away] < 1 or counts[home] < 1:
+            raise ValueError(f"Game {expected} needs at least one player on each team.")
+        normalized.append({
+            "game_number": number,
+            "away_team": away,
+            "home_team": home,
+            "winner_team": winner,
+            "season": season,
+            "date": f"{day}T00:00:00+00:00",
+            "lineup": lineup,
+        })
+
+    matchups = tuple((game["away_team"], game["home_team"]) for game in normalized)
+    expected = sunday_rotation_from_first(
+        normalized[0]["away_team"], normalized[0]["home_team"]
+    )
+    if matchups != expected:
+        raise ValueError("Games 2–6 must follow from game 1.")
+    return season, day, normalized
+
+
+def created_at_missing(exc):
+    message = str(exc).lower()
+    return "created_at" in message and "null" in message
+
+
+def delete_sunday_games(game_ids):
+    ids = []
+    for game_id in game_ids:
+        try:
+            ids.append(str(int(game_id)))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return
+    id_filter = ",".join(ids)
+    for table, column in (("player_played_games", "game_id"), ("game_results", "id")):
+        try:
+            supabase_request(
+                f"{table}?{column}=in.({id_filter})",
+                method="DELETE",
+                extra_headers={"Prefer": "return=minimal"},
+            )
+        except RuntimeError:
+            pass
+
+
+def insert_game_result_row(game, created_at=None):
+    row = {
+        "game_number": game["game_number"],
+        "away_team": game["away_team"],
+        "home_team": game["home_team"],
+        "winner_team": game["winner_team"],
+        "season": game["season"],
+        "date": game["date"],
+    }
+    if created_at:
+        row["created_at"] = created_at
+    return insert_supabase_row("game_results", row)
+
+
+def save_sunday_games(games):
+    created_at = None
+    inserted_ids = []
+    try:
+        for game in games:
+            try:
+                saved = insert_game_result_row(game, created_at)
+            except RuntimeError as exc:
+                if created_at or inserted_ids or not created_at_missing(exc):
+                    raise
+                created_at = utc_now_iso()
+                saved = insert_game_result_row(game, created_at)
+            game_id = saved.get("id")
+            if game_id is None:
+                raise RuntimeError("Supabase did not return a game id.")
+            game["id"] = game_id
+            inserted_ids.append(game_id)
+
+        player_rows = []
+        for game in games:
+            for player in game["lineup"]:
+                player_row = {
+                    "name": player["name"],
+                    "playing_team": player["playing_team"],
+                    "season": player["season"],
+                    "game_id": game["id"],
+                    "guest": player["guest"],
+                    "player_id": player["player_id"],
+                }
+                if created_at:
+                    player_row["created_at"] = created_at
+                player_rows.append(player_row)
+        try:
+            insert_supabase_rows("player_played_games", player_rows)
+        except RuntimeError as exc:
+            if created_at or not created_at_missing(exc):
+                raise
+            created_at = utc_now_iso()
+            for player_row in player_rows:
+                player_row["created_at"] = created_at
+            insert_supabase_rows("player_played_games", player_rows)
+    except Exception:
+        delete_sunday_games(inserted_ids)
+        raise
+
+    refresh_error = None
+    try:
+        call_supabase_rpc("refresh_all_stats")
+    except RuntimeError as exc:
+        refresh_error = exc
+    return len(player_rows), refresh_error
+
+
+def games_form_error_message(exc):
+    message = str(exc)
+    lowered = message.lower()
+    if "row-level security" in lowered or "rls" in message:
+        return (
+            "Supabase blocked the write. Run supabase/games_admin_policies.sql "
+            "in the SQL editor, then try again."
+        )
+    if "player_played_games" in lowered and "not found" in lowered:
+        return "The player_played_games table is not set up yet."
+    if "game_results" in lowered and "not found" in lowered:
+        return "The game_results table is not set up yet."
+    return message
+
+
+def load_games_page(season, day):
+    seasons = load_season_records()
+    known = {row["season"] for row in seasons}
+    if season not in known:
+        season = ""
+    if not season:
+        season = pick_default_games_season(seasons)
+    day = default_game_date(day)
+    roster = []
+    guests = []
+    recent = []
+    if season:
+        members = load_team_members(season)
+        players = load_players()
+        roster, guests, _by_id, _roster_teams = games_roster_and_guests(members, players)
+        recent = group_recent_sundays(load_season_game_results(season))
+    return {
+        "seasons": seasons,
+        "season": season,
+        "game_date": day,
+        "roster": roster,
+        "guests": guests,
+        "recent_sundays": recent,
+    }
+
+
+def render_games_page(season, day, posted_payload=None, load_error=None):
+    page = {
+        "seasons": [],
+        "season": season or "",
+        "game_date": default_game_date(day),
+        "roster": [],
+        "guests": [],
+        "recent_sundays": [],
+    }
+    if load_error is None:
+        try:
+            page = load_games_page(season, day)
+        except RuntimeError as exc:
+            load_error = str(exc)
+
+    initial_payload = None
+    if posted_payload:
+        try:
+            parsed = json.loads(posted_payload)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            initial_payload = parsed
+
     return render_template(
-        "admin/in_progress.html",
+        "admin/games.html",
         active="games",
-        page_title="Games",
-        page_summary="Record regular-season games and who played in each one.",
-        future_job=(
-            "Insert game_results, then player_played_games with game_id lookup "
-            "and guest status from the roster."
-        ),
+        seasons=page["seasons"],
+        season=page["season"],
+        game_date=page["game_date"],
+        roster_players=page["roster"],
+        guest_players=page["guests"],
+        recent_sundays=page["recent_sundays"],
+        team_names=TEAM_NAMES,
+        load_error=load_error,
+        initial_payload=initial_payload,
+    )
+
+
+@app.route("/admin/games", methods=["GET", "POST"])
+def admin_games():
+    if request.method == "POST":
+        season = (request.form.get("season") or "").strip()
+        day = (request.form.get("date") or "").strip()
+        posted_payload = request.form.get("payload") or ""
+        try:
+            seasons = load_season_records()
+            if season not in {row["season"] for row in seasons}:
+                raise ValueError("That season is not in the seasons list.")
+            members = load_team_members(season)
+            players = load_players()
+            _roster, _guests, players_by_id, roster_team_by_id = games_roster_and_guests(
+                members, players
+            )
+            season, day, games = parse_sunday_games_form(
+                request.form, players_by_id, roster_team_by_id
+            )
+            if games_exist_for_date(season, day):
+                raise ValueError(
+                    f"Games for {season} on {day} are already saved."
+                )
+            player_count, refresh_error = save_sunday_games(games)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return render_games_page(season, day, posted_payload)
+        except RuntimeError as exc:
+            flash(games_form_error_message(exc), "error")
+            return render_games_page(season, day, posted_payload)
+
+        flash(
+            f"Saved {day}: 6 games, {player_count} played-game rows.",
+            "success",
+        )
+        if refresh_error:
+            flash(
+                "Games were saved, but stats were not rebuilt. "
+                "Run refresh_all_stats in Supabase.",
+                "error",
+            )
+        return redirect(url_for("admin_games", season=season, date=day))
+
+    return render_games_page(
+        (request.args.get("season") or "").strip(),
+        (request.args.get("date") or "").strip(),
     )
 
 

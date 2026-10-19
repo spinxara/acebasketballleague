@@ -1,0 +1,508 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Games · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Games</h2>
+    <p class="lead">Record one Sunday: six games, the winner of each, and who played.</p>
+    <p class="note">
+      There is no score. Games 4–6 repeat games 1–3.
+      A player who sits stays out of that team’s later games. Check a later game if they arrive late, or uncheck a later game if they leave early. Guest is saved automatically
+      when someone plays off their roster team. Add a walk-up on Players first.
+    </p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="form-messages">
+          {% for category, message in messages %}
+            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% if load_error %}
+      <p class="error-note">Could not load games. {{ load_error }}</p>
+    {% elif not seasons %}
+      <p class="note">Add a season on the Seasons page before entering games.</p>
+    {% else %}
+      <div class="upload-form games-setup">
+        <div>
+          <label for="season-select">Season</label>
+          <select id="season-select">
+            {% for row in seasons %}
+              <option value="{{ row.season }}" {% if row.season == season %}selected{% endif %}>
+                {{ row.season }}{% if row.status_label %} ({{ row.status_label }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if season and not load_error %}
+    <section class="card">
+      <h3>{{ season }}</h3>
+      {% if not roster_players %}
+        <p class="note">
+          No roster players with a player id for this season.
+          Save a roster, or add players on the Players page, before entering games.
+        </p>
+      {% else %}
+        <form id="sunday-form" method="post" action="{{ url_for('admin_games') }}">
+          <input type="hidden" name="season" value="{{ season }}" />
+          <input type="hidden" name="payload" id="games-payload" value="" />
+
+          <div class="upload-form games-setup">
+            <div>
+              <label for="game-date">Date</label>
+              <input id="game-date" name="date" type="date" required value="{{ game_date }}" />
+            </div>
+          </div>
+
+          <div class="games-first">
+            <div>
+              <label for="first-away">Game 1 away</label>
+              <select id="first-away">
+                {% for team in team_names %}
+                  <option value="{{ team }}" {% if team == "KCN" %}selected{% endif %}>{{ team }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="first-home">Game 1 home</label>
+              <select id="first-home">
+                {% for team in team_names %}
+                  <option value="{{ team }}" {% if team == "BK" %}selected{% endif %}>{{ team }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <p class="note">The team that sits out game 1 is away next, and that game’s away team is home next. Games 4–6 repeat 1–3. Changing game 1 resets lineups and winners.</p>
+
+          <div id="game-cards" class="games-list"></div>
+
+          <p id="games-form-error" class="error-note" hidden></p>
+          <button class="login-submit" type="submit">Save Sunday</button>
+        </form>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>Recent Sundays</h3>
+      {% if not recent_sundays %}
+        <p class="note">No games saved for this season yet.</p>
+      {% else %}
+        {% for sunday in recent_sundays %}
+          <h4 class="games-sunday-date">{{ sunday.date }}</h4>
+          <div class="table-wrap">
+            <table class="stats-table">
+              <thead>
+                <tr>
+                  <th>Game</th>
+                  <th>Matchup</th>
+                  <th>Winner</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for game in sunday.games %}
+                  <tr>
+                    <td>{{ game.game_number }}</td>
+                    <td>{{ game.away_team }} @ {{ game.home_team }}</td>
+                    <td>{{ game.winner_team or "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {% if seasons and not load_error %}
+    <script>
+      (function () {
+        var seasonSelect = document.getElementById("season-select");
+        if (!seasonSelect || seasonSelect.dataset.bound === "1") return;
+        seasonSelect.dataset.bound = "1";
+        seasonSelect.addEventListener("change", function () {
+          var params = new URLSearchParams();
+          params.set("season", seasonSelect.value);
+          var date = document.getElementById("game-date");
+          if (date && date.value) params.set("date", date.value);
+          window.location = {{ url_for("admin_games") | tojson }} + "?" + params.toString();
+        });
+      })();
+    </script>
+  {% endif %}
+  {% if season and roster_players and not load_error %}
+    <script id="games-config" type="application/json">{{ {
+      "teams": team_names,
+      "roster": roster_players,
+      "guests": guest_players,
+      "initialPayload": initial_payload
+    } | tojson }}</script>
+    <script>
+      (function () {
+        var configNode = document.getElementById("games-config");
+        var config = configNode ? JSON.parse(configNode.textContent) : null;
+        var form = document.getElementById("sunday-form");
+        var cards = document.getElementById("game-cards");
+        var awaySelect = document.getElementById("first-away");
+        var homeSelect = document.getElementById("first-home");
+        var errorNode = document.getElementById("games-form-error");
+        if (!config || !form || !cards || !awaySelect || !homeSelect) return;
+
+        var teams = config.teams || ["NPS", "KCN", "BK"];
+        var roster = config.roster || [];
+        var guests = config.guests || [];
+        var byId = {};
+        roster.forEach(function (player) { byId[player.id] = player; });
+        guests.forEach(function (player) { byId[player.id] = player; });
+
+        var winners = [null, null, null, null, null, null];
+        var lineups = [];
+        var locked = [];
+
+        function el(tag, className, text) {
+          var node = document.createElement(tag);
+          if (className) node.className = className;
+          if (text != null) node.textContent = text;
+          return node;
+        }
+
+        function playerLabel(player) {
+          if (!player) return "Unknown player";
+          var label = player.name || "Unknown player";
+          if (player.comments) label += " · " + player.comments;
+          if (player.non_member && label.indexOf("(NM)") === -1) label += " (NM)";
+          return label;
+        }
+
+        function rosterIds(team) {
+          return roster.filter(function (player) {
+            return player.team === team;
+          }).map(function (player) { return player.id; });
+        }
+
+        function otherTeam(away, home) {
+          return teams.filter(function (team) {
+            return team !== away && team !== home;
+          })[0];
+        }
+
+        function rotationFromFirst(firstAway, firstHome) {
+          var away = firstAway;
+          var home = firstHome;
+          var games = [];
+          for (var i = 0; i < 3; i++) {
+            games.push({ away: away, home: home });
+            var sitter = otherTeam(away, home);
+            var nextAway = sitter;
+            var nextHome = away;
+            away = nextAway;
+            home = nextHome;
+          }
+          return games.concat(games.map(function (game) {
+            return { away: game.away, home: game.home };
+          }));
+        }
+
+        function currentRotation() {
+          return rotationFromFirst(awaySelect.value, homeSelect.value);
+        }
+
+        function initLineups() {
+          lineups = [];
+          locked = [];
+          winners = [null, null, null, null, null, null];
+          var rotation = currentRotation();
+          for (var i = 0; i < 6; i++) {
+            var game = rotation[i] || {};
+            lineups[i] = {};
+            locked[i] = {};
+            [game.away, game.home].forEach(function (team) {
+              if (!team) return;
+              lineups[i][team] = rosterIds(team);
+              locked[i][team] = {};
+            });
+          }
+        }
+
+        function teamPlays(gameIndex, team) {
+          return Object.prototype.hasOwnProperty.call(lineups[gameIndex] || {}, team);
+        }
+
+        function lineupHas(gameIndex, team, playerId) {
+          return (lineups[gameIndex][team] || []).indexOf(playerId) !== -1;
+        }
+
+        function setPresent(gameIndex, team, playerId, present) {
+          var ids = (lineups[gameIndex][team] || []).slice();
+          var has = ids.indexOf(playerId) !== -1;
+          if (present && !has) ids.push(playerId);
+          if (!present && has) ids = ids.filter(function (id) { return id !== playerId; });
+          lineups[gameIndex][team] = ids;
+        }
+
+        function lockPlayer(gameIndex, team, playerId) {
+          if (!locked[gameIndex][team]) locked[gameIndex][team] = {};
+          locked[gameIndex][team][playerId] = true;
+        }
+
+        function isLocked(gameIndex, team, playerId) {
+          return !!(locked[gameIndex] && locked[gameIndex][team] && locked[gameIndex][team][playerId]);
+        }
+
+        function propagatePlayer(team, playerId, fromGame, present) {
+          for (var i = fromGame + 1; i < 6; i++) {
+            if (!teamPlays(i, team)) continue;
+            if (isLocked(i, team, playerId)) break;
+            setPresent(i, team, playerId, present);
+          }
+        }
+
+        var renderTimer = null;
+        function scheduleRender() {
+          if (renderTimer) return;
+          renderTimer = window.setTimeout(function () {
+            renderTimer = null;
+            render();
+          }, 0);
+        }
+
+        function assignPlayer(gameIndex, team, playerId, present) {
+          var game = currentRotation()[gameIndex];
+          [game.away, game.home].forEach(function (side) {
+            var should = side === team && present;
+            if (lineupHas(gameIndex, side, playerId) === should) return;
+            setPresent(gameIndex, side, playerId, should);
+            lockPlayer(gameIndex, side, playerId);
+            propagatePlayer(side, playerId, gameIndex, should);
+          });
+          scheduleRender();
+        }
+
+        function showError(message, gameIndex) {
+          if (!errorNode) return;
+          errorNode.hidden = !message;
+          errorNode.textContent = message || "";
+          document.querySelectorAll(".games-card").forEach(function (card, index) {
+            var existing = card.querySelector(".games-card-error");
+            if (existing) existing.remove();
+            card.classList.toggle("games-card-problem", message && index === gameIndex);
+            if (message && index === gameIndex) {
+              card.insertBefore(el("p", "error-note games-card-error", message), card.firstChild);
+              card.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          });
+        }
+
+        function restorePayload(payload) {
+          if (!payload || !Array.isArray(payload.games) || payload.games.length !== 6) return;
+          var first = payload.games[0] || {};
+          var firstAway = String(first.away_team || "").toUpperCase();
+          var firstHome = String(first.home_team || "").toUpperCase();
+          if (teams.indexOf(firstAway) < 0 || teams.indexOf(firstHome) < 0 || firstAway === firstHome) return;
+          var rotation = rotationFromFirst(firstAway, firstHome);
+          for (var i = 0; i < 6; i++) {
+            var posted = payload.games[i] || {};
+            var away = String(posted.away_team || "").toUpperCase();
+            var home = String(posted.home_team || "").toUpperCase();
+            if (rotation[i].away !== away || rotation[i].home !== home) return;
+          }
+          awaySelect.value = firstAway;
+          homeSelect.value = firstHome;
+          initLineups();
+          payload.games.forEach(function (game, index) {
+            var away = rotation[index].away;
+            var home = rotation[index].home;
+            winners[index] = String(game.winner_team || "").toUpperCase() || null;
+            if (winners[index] !== away && winners[index] !== home) winners[index] = null;
+            lineups[index][away] = [];
+            lineups[index][home] = [];
+            locked[index][away] = {};
+            locked[index][home] = {};
+            (game.players || []).forEach(function (player) {
+              var team = String(player.playing_team || "").toUpperCase();
+              var id = player.player_id;
+              if (!byId[id] || (team !== away && team !== home)) return;
+              if (lineups[index][team].indexOf(id) === -1) lineups[index][team].push(id);
+              lockPlayer(index, team, id);
+            });
+            [away, home].forEach(function (team) {
+              roster.forEach(function (player) {
+                if (player.team === team) lockPlayer(index, team, player.id);
+              });
+            });
+          });
+        }
+
+        function renderTeamColumn(gameIndex, team) {
+          var column = el("div", "games-team");
+          column.appendChild(el("h4", "", team));
+          var selected = lineups[gameIndex][team] || [];
+          var rosterForTeam = roster.filter(function (player) { return player.team === team; });
+          var list = el("ul", "games-lineup");
+
+          rosterForTeam.forEach(function (player) {
+            var item = el("li", "games-lineup-row");
+            var label = el("label", "games-check");
+            var box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = selected.indexOf(player.id) !== -1;
+            box.addEventListener("change", function () {
+              assignPlayer(gameIndex, team, player.id, box.checked);
+            });
+            label.appendChild(box);
+            label.appendChild(document.createTextNode(" " + playerLabel(player)));
+            item.appendChild(label);
+            list.appendChild(item);
+          });
+
+          selected.forEach(function (playerId) {
+            var player = byId[playerId];
+            if (player && player.team === team) return;
+            var item = el("li", "games-lineup-row games-guest-row");
+            item.appendChild(el("span", "", playerLabel(player) + " · guest"));
+            var remove = el("button", "danger-btn roster-small-btn", "Remove");
+            remove.type = "button";
+            remove.addEventListener("click", function () {
+              assignPlayer(gameIndex, team, playerId, false);
+            });
+            item.appendChild(remove);
+            list.appendChild(item);
+          });
+
+          if (!list.childNodes.length) {
+            list.appendChild(el("li", "note", "No players yet."));
+          }
+          column.appendChild(list);
+
+          var addRow = el("div", "games-add-guest");
+          var select = document.createElement("select");
+          select.appendChild(new Option("Add guest", ""));
+          var inGame = {};
+          var game = currentRotation()[gameIndex];
+          [game.away, game.home].forEach(function (side) {
+            (lineups[gameIndex][side] || []).forEach(function (id) { inGame[id] = true; });
+          });
+          var options = roster.filter(function (player) {
+            return player.team !== team && !inGame[player.id];
+          }).concat(guests.filter(function (player) {
+            return !inGame[player.id];
+          }));
+          options.sort(function (a, b) {
+            return playerLabel(a).localeCompare(playerLabel(b));
+          });
+          options.forEach(function (player) {
+            var option = new Option(playerLabel(player), player.id);
+            select.appendChild(option);
+          });
+          var add = el("button", "login-submit roster-small-btn", "Add");
+          add.type = "button";
+          add.addEventListener("click", function () {
+            if (!select.value) return;
+            assignPlayer(gameIndex, team, select.value, true);
+          });
+          addRow.appendChild(select);
+          addRow.appendChild(add);
+          column.appendChild(addRow);
+          return column;
+        }
+
+        function render() {
+          cards.replaceChildren();
+          var rotation = currentRotation();
+          rotation.forEach(function (game, index) {
+            var card = el("article", "games-card");
+            var title = el("div", "games-card-title");
+            title.appendChild(el("h3", "", "Game " + (index + 1)));
+            title.appendChild(el("p", "note", game.away + " @ " + game.home));
+            card.appendChild(title);
+
+            var winnerRow = el("div", "games-winner-row");
+            [game.away, game.home].forEach(function (team) {
+              var button = el("button", "games-winner-btn" + (winners[index] === team ? " active" : ""));
+              button.type = "button";
+              button.textContent = team + " wins";
+              button.setAttribute("aria-pressed", winners[index] === team ? "true" : "false");
+              button.addEventListener("click", function () {
+                winners[index] = team;
+                showError("");
+                render();
+              });
+              winnerRow.appendChild(button);
+            });
+            card.appendChild(winnerRow);
+
+            var columns = el("div", "games-teams");
+            columns.appendChild(renderTeamColumn(index, game.away));
+            columns.appendChild(renderTeamColumn(index, game.home));
+            card.appendChild(columns);
+            cards.appendChild(card);
+          });
+        }
+
+        function onFirstGameChange(changed) {
+          if (awaySelect.value === homeSelect.value) {
+            var fallback = teams.filter(function (team) {
+              return team !== awaySelect.value;
+            })[0];
+            if (changed === "away") homeSelect.value = fallback;
+            else awaySelect.value = fallback;
+          }
+          initLineups();
+          showError("");
+          render();
+        }
+
+        awaySelect.addEventListener("change", function () { onFirstGameChange("away"); });
+        homeSelect.addEventListener("change", function () { onFirstGameChange("home"); });
+
+        form.addEventListener("submit", function (event) {
+          var rotation = currentRotation();
+          for (var i = 0; i < 6; i++) {
+            var game = rotation[i];
+            if (!game || (winners[i] !== game.away && winners[i] !== game.home)) {
+              event.preventDefault();
+              showError("Pick a winner for game " + (i + 1) + ".", i);
+              return;
+            }
+            if (!(lineups[i][game.away] || []).length || !(lineups[i][game.home] || []).length) {
+              event.preventDefault();
+              showError("Game " + (i + 1) + " needs at least one player on each team.", i);
+              return;
+            }
+          }
+          var games = rotation.map(function (game, index) {
+            var players = [];
+            [game.away, game.home].forEach(function (team) {
+              (lineups[index][team] || []).forEach(function (id) {
+                players.push({ player_id: id, playing_team: team });
+              });
+            });
+            return {
+              game_number: index + 1,
+              away_team: game.away,
+              home_team: game.home,
+              winner_team: winners[index],
+              players: players
+            };
+          });
+          document.getElementById("games-payload").value = JSON.stringify({ games: games });
+          showError("");
+        });
+
+        initLineups();
+        restorePayload(config.initialPayload);
+        render();
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

@@ -38,6 +38,7 @@ Live site: https://acebasketballteam.com
 - Players page to list, add, and update league members and non-members (`active` / `non_member` / comments) in Supabase.
 - Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, and season page links.
 - Roster page to view a season’s `team_members`, move players between NPS/KCN/BK, add/remove players, and clear a season roster (initial roster still comes from Draft Room).
+- Games page to save one Sunday: six `game_results` (winner, no score) and `player_played_games` lineups, then `refresh_all_stats`.
 - Placeholder pages for dashboard, games, and tournament (not wired yet).
 
 Visiting `/draft` redirects to `/admin/draft`.
@@ -225,10 +226,12 @@ For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_poli
 
 For Draft Room “Save to roster” and Roster admin writes (insert/update/delete on `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to modify roster rows.
 
+For Games admin writes (`game_results` and `player_played_games`), run `supabase/games_admin_policies.sql`.
+
 ## Notes
 
 - The Render service must stay running for the public site and for Google to crawl it.
-- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Use the **Roster** admin page afterward for mid-season trades, adds/removals, or clearing a season so Draft can save again. Games, tournament, and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
+- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Use the **Roster** admin page afterward for mid-season trades, adds/removals, or clearing a season so Draft can save again. Use **Games** to enter a Sunday (six games and lineups). Tournament and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
 
 ## Maintainer
 
