@@ -8,7 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from functools import wraps
 from io import BytesIO
 from threading import Lock
@@ -68,6 +69,7 @@ PUBLIC_SITEMAP_PATHS = (
     "/team-moments",
 )
 HREFLANG_PATHS = frozenset({"/", "/ko"})
+SESSION_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
 SPONSORS = [
     {
@@ -240,6 +242,19 @@ def admin_socket_required(handler):
     return wrapped
 
 
+def sunday_session_window(now=None):
+    """Return the current or next Sunday 9:00–12:00 America/Los_Angeles window."""
+    current = datetime.now(SESSION_TIMEZONE) if now is None else now.astimezone(SESSION_TIMEZONE)
+    days_until_sunday = (6 - current.weekday()) % 7
+    session_day = current.date() + timedelta(days=days_until_sunday)
+    start = datetime.combine(session_day, time(9, 0), tzinfo=SESSION_TIMEZONE)
+    end = datetime.combine(session_day, time(12, 0), tzinfo=SESSION_TIMEZONE)
+    if current >= end:
+        start += timedelta(days=7)
+        end += timedelta(days=7)
+    return start, end
+
+
 @app.context_processor
 def inject_globals():
     path = request.path or "/"
@@ -256,6 +271,7 @@ def inject_globals():
             {"lang": "ko", "href": SITE_URL + "/ko"},
             {"lang": "x-default", "href": SITE_URL + "/"},
         ]
+    session_start, session_end = sunday_session_window()
     league_address = {
         "@type": "PostalAddress",
         "streetAddress": "1219 Los Angeles St",
@@ -313,7 +329,15 @@ def inject_globals():
                     "ACE는 매주 일요일 오전 9시–낮 12시에 Academy USA 코트를 예약해 사용합니다. "
                     "이 시간은 Academy USA에 게시된 체육관 영업시간과는 다릅니다."
                 ),
+                "startDate": session_start.isoformat(timespec="minutes"),
+                "endDate": session_end.isoformat(timespec="minutes"),
+                "eventStatus": "https://schema.org/EventScheduled",
                 "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+                "organizer": {
+                    "@type": "Organization",
+                    "name": "ACE Basketball League",
+                    "url": SITE_URL + "/",
+                },
                 "eventSchedule": {
                     "@type": "Schedule",
                     "repeatFrequency": "P1W",
