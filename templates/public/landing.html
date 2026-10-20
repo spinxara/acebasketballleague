@@ -11,9 +11,9 @@
 {% block description %}ACE Basketball League is a Los Angeles Korean community basketball league. Sundays 9 AM–12 PM at Academy USA in Glendale.{% endblock %}
 
 {% block content %}
+  <div class="landing-hero-glow" aria-hidden="true"></div>
+  <div class="landing-hero-court" aria-hidden="true"></div>
   <section class="landing-hero" aria-label="ACE Basketball League">
-    <div class="landing-hero-glow" aria-hidden="true"></div>
-    <div class="landing-hero-court" aria-hidden="true"></div>
     <div class="landing-hero-inner">
       <img
         class="landing-hero-logo"
@@ -55,14 +55,6 @@
     </section>
 
     <section class="landing-section">
-      <h2>How the season works</h2>
-      <p>
-        Captain-led drafts build balanced teams. Then regular-season games and a championship
-        tournament—plus shared records so you can follow wins, improvement, and past seasons.
-      </p>
-    </section>
-
-    <section class="landing-section">
       <h2>Guidebook</h2>
       <p>Results, player stats, rules, and photos live in the league guidebook.</p>
       <p>
@@ -74,26 +66,37 @@
       </p>
     </section>
 
-    <section class="landing-section">
-      <h2>Contact</h2>
-      <p>
-        Instagram:
-        <a
-          class="landing-text-link"
-          href="{{ instagram_url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-        >@la_ace_basketball</a>
-      </p>
-      <p>
-        {{ maintainer_name }}
-        (Kakao: {{ maintainer_kakao }}, email:
-        <span
-          class="email-address"
-          data-email-user="{{ maintainer_email_user }}"
-          data-email-domain="{{ maintainer_email_domain }}"
-        >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
-      </p>
-    </section>
+    {% if sponsors %}
+      <section class="landing-section">
+        <h2>Sponsors</h2>
+        <div class="sponsor-row">
+          {% for sponsor in sponsors %}
+            {% if sponsor.url %}
+              <a
+                class="sponsor-tile{% if sponsor.featured %} featured{% endif %}"
+                href="{{ sponsor.url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+            {% else %}
+              <div class="sponsor-tile{% if sponsor.featured %} featured{% endif %}">
+            {% endif %}
+              {% if sponsor.logo %}
+                <img
+                  src="{{ url_for('static', filename=sponsor.logo) }}"
+                  alt="{{ sponsor.name }}"
+                />
+              {% else %}
+                <span class="sponsor-name">{{ sponsor.name }}</span>
+              {% endif %}
+            {% if sponsor.url %}
+              </a>
+            {% else %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
   </div>
 {% endblock %}

@@ -4,6 +4,13 @@
 {% block description %}ACE Basketball League, a Los Angeles Korean community league, plays Sunday mornings at Academy USA in Glendale. 엘에이 한인 농구.{% endblock %}
 
 {% block content %}
+  <div data-about-langs>
+  <div class="about-lang-switch" role="group" aria-label="Language">
+    <a class="about-lang-button" href="{{ url_for('about') }}" data-about-lang-button="en">English</a>
+    <a class="about-lang-button" href="{{ url_for('about') }}#ko" data-about-lang-button="ko">한국어</a>
+  </div>
+
+  <div data-about-lang="en">
   <section class="card">
     <div class="kicker">About the league</div>
     <h1>About ACE Basketball League</h1>
@@ -81,6 +88,9 @@
   <section class="card">
     <h2>Contact</h2>
     <p>
+      Guests can join without being regular members if they have some basketball experience and can play in a game. Academy USA is the court; ask ACE using the contacts below.
+    </p>
+    <p>
       Instagram:
       <a
         class="rules-link"
@@ -99,43 +109,78 @@
       >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
     </p>
   </section>
+  </div>
 
-  <section class="card" lang="ko">
-    <h2>리그 소개</h2>
-    <p>
-      <a class="rules-link" href="{{ url_for('korean_landing') }}">한국어 소개 페이지</a>
-    </p>
+  <div id="ko" data-about-lang="ko" lang="ko">
+  <section class="card">
+    <div class="kicker">리그 소개</div>
+    <h1>ACE Basketball League</h1>
     <p>
       ACE Basketball League는 로스앤젤레스 지역의 한인 커뮤니티 농구 리그입니다.
       엘에이 한인 농구를 함께하려는 선수들이 모이며, 한국인이 아닌 멤버도 함께합니다.
     </p>
     <p>
       친한 농구 모임의 분위기와 조직된 경기의 구조를 함께 갖춘 리그입니다.
-      매주 일요일 오전 9시부터 낮 12시까지 캘리포니아 글렌데일 Academy USA 실내 코트에서 경기합니다.
     </p>
+  </section>
+
+  <section class="card">
+    <h2>시간 및 장소</h2>
+    <p>매주 일요일 오전 9시부터 낮 12시</p>
     <p>
       Academy USA<br />
       1219 Los Angeles St<br />
       Glendale, CA 91204
     </p>
+    <p>캘리포니아 글렌데일 Academy USA 실내 코트에서 경기합니다.</p>
+    <p>
+      <a
+        class="rules-link"
+        href="https://maps.app.goo.gl/TJwoDe8SBM69MQQW9"
+        target="_blank"
+        rel="noopener noreferrer"
+      >지도 보기</a>
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>시즌</h2>
     <p>
       시즌에는 팀 드래프트, 정규 시즌 경기, 챔피언십 토너먼트가 있습니다.
       주장이 이끄는 드래프트로 팀 전력을 맞추고, 시즌마다 새로운 상대와 만나게 됩니다.
     </p>
+  </section>
+
+  <section class="card">
+    <h2>기록</h2>
     <p>
       경기 결과, 출전, 승률, 시즌과 토너먼트 성적도 함께 기록합니다.
       멤버는 자신의 경기력과 지난 시즌, 그리고 팀에 남긴 기록을 다시 볼 수 있습니다.
     </p>
+  </section>
+
+  <section class="card">
+    <h2>시상</h2>
     <p>
       성장한 선수에게는 Most Improved Player 같은 상을 주고, 토너먼트 우승도 함께 축하합니다.
       가끔 여는 픽업 게임과 계획 중인 3점 슛 콘테스트는 경기에 참여하는 또 다른 방법입니다.
     </p>
+  </section>
+
+  <section class="card">
+    <h2>다시 모이는 이유</h2>
     <p>
       ACE는 꾸준히 모여 경기하고 서로를 알아가는 자리입니다.
       승리도 중요하지만, 팀워크와 성장, 그리고 일요일 아침에 다시 오게 하는 관계를 더 소중히 여깁니다.
     </p>
-    <p>농구와, 함께 경기하는 사람들에게 매주 시간을 내는 리그입니다.</p>
-    <h3>문의</h3>
+    <p class="lead">농구와, 함께 경기하는 사람들에게 매주 시간을 내는 리그입니다.</p>
+  </section>
+
+  <section class="card">
+    <h2>문의</h2>
+    <p>
+      정규 멤버가 아니어도 게스트로 함께할 수 있습니다. 농구를 어느 정도 할 수 있고 함께 경기를 즐길 수 있다면 참여 가능하며, 문의는 아래 ACE 연락처로 해주세요.
+    </p>
     <p>
       Instagram:
       <a
@@ -155,4 +200,51 @@
       >{{ maintainer_email_user }} [at] {{ maintainer_email_domain }}</span>)
     </p>
   </section>
+  </div>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.querySelector("[data-about-langs]");
+      if (!root) return;
+      var panels = root.querySelectorAll("[data-about-lang]");
+      var buttons = root.querySelectorAll("[data-about-lang-button]");
+
+      function selected() {
+        return location.hash === "#ko" ? "ko" : "en";
+      }
+
+      function apply(lang) {
+        panels.forEach(function (panel) {
+          panel.hidden = panel.getAttribute("data-about-lang") !== lang;
+        });
+        buttons.forEach(function (button) {
+          button.setAttribute("aria-pressed", button.getAttribute("data-about-lang-button") === lang ? "true" : "false");
+        });
+        document.documentElement.lang = lang;
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function (event) {
+          event.preventDefault();
+          var lang = button.getAttribute("data-about-lang-button");
+          if (lang === "ko") {
+            history.pushState(null, "", "#ko");
+          } else {
+            history.pushState(null, "", location.pathname + location.search);
+          }
+          apply(lang);
+        });
+      });
+
+      window.addEventListener("hashchange", function () {
+        apply(selected());
+      });
+      window.addEventListener("popstate", function () {
+        apply(selected());
+      });
+
+      apply(selected());
+    })();
+  </script>
 {% endblock %}

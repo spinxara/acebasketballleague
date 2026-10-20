@@ -150,7 +150,7 @@ On the Render service, set `SESSION_COOKIE_SECURE=true`. Set `SITE_URL` only if 
 
 ## Search
 
-Public pages include a description, canonical URL, share tags, and SportsOrganization structured data (name, Glendale address, and social profiles). `/` and `/ko` are the marketing landings and include `hreflang` alternates (`en`, `ko`, `x-default`). `/robots.txt` allows public pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs, including `/`, `/ko`, `/home`, and `/about`. Admin pages send `noindex, nofollow`.
+Public pages include a description, canonical URL, share tags, and SportsOrganization structured data (name, Glendale address, social profiles, a short league description in English and Korean, and a weekly Sunday SportsEvent from 9:00 AM to 12:00 PM at Academy USA). The event description states that this is a reserved court time, separate from Academy USA’s public gym hours. That detail stays in the structured data so the landing pages stay short. `/` and `/ko` are the marketing landings and include `hreflang` alternates (`en`, `ko`, `x-default`). `/robots.txt` allows public pages and blocks `/admin` and `/draft`. `/sitemap.xml` lists the public URLs, including `/`, `/ko`, `/home`, and `/about`. Admin pages send `noindex, nofollow`.
 
 After deploy:
 

@@ -24,7 +24,7 @@
           <select id="season" name="season">
             <option value="all"{% if selected_season == "all" %} selected{% endif %}>All seasons</option>
             {% for season in seasons %}
-              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}</option>
+              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}{% if season == active_season %} (Active){% endif %}</option>
             {% endfor %}
           </select>
         </div>

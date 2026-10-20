@@ -23,7 +23,7 @@
           <label for="season">Season</label>
           <select id="season" name="season">
             {% for season in seasons %}
-              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}</option>
+              <option value="{{ season }}"{% if season == selected_season %} selected{% endif %}>{{ season }}{% if season == active_season %} (Active){% endif %}</option>
             {% endfor %}
           </select>
         </div>

@@ -256,6 +256,14 @@ def inject_globals():
             {"lang": "ko", "href": SITE_URL + "/ko"},
             {"lang": "x-default", "href": SITE_URL + "/"},
         ]
+    league_address = {
+        "@type": "PostalAddress",
+        "streetAddress": "1219 Los Angeles St",
+        "addressLocality": "Glendale",
+        "addressRegion": "CA",
+        "postalCode": "91204",
+        "addressCountry": "US",
+    }
     return {
         "public_nav": PUBLIC_NAV,
         "admin_nav": admin_nav,
@@ -283,16 +291,43 @@ def inject_globals():
             "sport": "Basketball",
             "url": SITE_URL + "/",
             "logo": logo_url,
+            "description": (
+                "ACE is a Sunday league in Glendale for the LA Korean community. "
+                "The league is Korean-centered, and non-Korean members play too. "
+                f"Contact Instagram @la_ace_basketball or Kakao {MAINTAINER_KAKAO}. "
+                "This site lists ACE's schedule and results and does not catalog other groups. "
+                "ACE는 로스앤젤레스 한인 커뮤니티를 위한 글렌데일 일요일 리그입니다. "
+                "한인 커뮤니티가 중심이며, 한국인이 아닌 멤버도 함께합니다. "
+                f"Instagram @la_ace_basketball 또는 카카오톡 {MAINTAINER_KAKAO}로 문의해 주세요. "
+                "이 사이트는 ACE의 일정과 기록을 안내하며, 다른 모임을 목록으로 정리하지는 않습니다."
+            ),
             "sameAs": [YOUTUBE_URL, INSTAGRAM_URL],
-            "address": {
-                "@type": "PostalAddress",
-                "streetAddress": "1219 Los Angeles St",
-                "addressLocality": "Glendale",
-                "addressRegion": "CA",
-                "postalCode": "91204",
-                "addressCountry": "US",
-            },
+            "address": league_address,
             "areaServed": "Los Angeles",
+            "event": {
+                "@type": "SportsEvent",
+                "name": "ACE Basketball League Sunday session",
+                "description": (
+                    "ACE reserves the court every Sunday from 9:00 AM to 12:00 PM at Academy USA. "
+                    "That slot is separate from Academy USA's posted public gym hours. "
+                    "ACE는 매주 일요일 오전 9시–낮 12시에 Academy USA 코트를 예약해 사용합니다. "
+                    "이 시간은 Academy USA에 게시된 체육관 영업시간과는 다릅니다."
+                ),
+                "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+                "eventSchedule": {
+                    "@type": "Schedule",
+                    "repeatFrequency": "P1W",
+                    "byDay": "https://schema.org/Sunday",
+                    "startTime": "09:00",
+                    "endTime": "12:00",
+                    "scheduleTimezone": "America/Los_Angeles",
+                },
+                "location": {
+                    "@type": "Place",
+                    "name": "Academy USA",
+                    "address": league_address,
+                },
+            },
             "contactPoint": {
                 "@type": "ContactPoint",
                 "contactType": "Website maintainer",
@@ -1969,6 +2004,15 @@ def current_season_label(seasons):
     return ""
 
 
+def active_season_label():
+    try:
+        seasons = load_season_records()
+    except RuntimeError:
+        return ""
+    match = next((row for row in seasons if row.get("status") == "active"), None)
+    return match["season"] if match else ""
+
+
 def current_roster_by_player():
     try:
         seasons = load_season_records()
@@ -2766,6 +2810,7 @@ def player_stats():
     seasons = []
     players = []
     selected_season = (request.args.get("season") or "").strip()
+    active_season = active_season_label()
 
     try:
         seasons, all_players = load_player_season_stats()
@@ -2784,6 +2829,7 @@ def player_stats():
         active="player-stats",
         seasons=seasons,
         selected_season=selected_season,
+        active_season=active_season,
         players=players,
         load_error=load_error,
     )
@@ -2813,6 +2859,7 @@ def team_matchups():
     matchups = []
     selected_season = (request.args.get("season") or "").strip()
     show_all = False
+    active_season = active_season_label()
 
     try:
         seasons, all_matchups = load_team_matchups()
@@ -2836,6 +2883,7 @@ def team_matchups():
         active="team-matchups",
         seasons=seasons,
         selected_season=selected_season,
+        active_season=active_season,
         show_all=show_all,
         matchups=matchups,
         load_error=load_error,

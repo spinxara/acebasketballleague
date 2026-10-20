@@ -23,7 +23,18 @@
     {% elif not players %}
       <p class="note">No members yet.</p>
     {% else %}
-      <p class="note">{{ players | length }} members</p>
+      <div class="member-search-row">
+        <input
+          type="search"
+          id="member-search"
+          class="member-search"
+          placeholder="Search by name or team"
+          aria-label="Search members"
+          autocomplete="off"
+        />
+        <p class="note" id="member-count">{{ players | length }} members</p>
+      </div>
+      <p class="note" id="member-search-empty" hidden>No members match that search.</p>
       <div class="table-wrap">
         <table class="stats-table sortable-table stack-mobile">
           <thead>
@@ -76,6 +87,32 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='table-sort.js') }}" defer></script>
   <script>
+    const memberSearch = document.getElementById("member-search");
+    const memberRows = Array.from(document.querySelectorAll(".sortable-table tbody tr"));
+    const memberCount = document.getElementById("member-count");
+    const memberEmpty = document.getElementById("member-search-empty");
+    const memberTotal = memberRows.length;
+
+    memberSearch?.addEventListener("input", function () {
+      const query = this.value.trim().toLowerCase();
+      let shown = 0;
+      memberRows.forEach(function (row) {
+        const match = !query || row.textContent.toLowerCase().includes(query);
+        row.classList.toggle("is-filtered-out", !match);
+        if (match) {
+          shown += 1;
+        }
+      });
+      if (memberCount) {
+        memberCount.textContent = query
+          ? shown + " of " + memberTotal + " members"
+          : memberTotal + " members";
+      }
+      if (memberEmpty) {
+        memberEmpty.hidden = shown !== 0;
+      }
+    });
+
     document.querySelectorAll("tr.player-result-row[data-href]").forEach(function (row) {
       row.addEventListener("click", function (event) {
         if (event.target.closest("a, button")) {
