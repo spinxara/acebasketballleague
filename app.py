@@ -333,6 +333,7 @@ def inject_globals():
                 "endDate": session_end.isoformat(timespec="minutes"),
                 "eventStatus": "https://schema.org/EventScheduled",
                 "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+                "image": SITE_URL + url_for("static", filename="sunday-session.jpg"),
                 "organizer": {
                     "@type": "Organization",
                     "name": "ACE Basketball League",
