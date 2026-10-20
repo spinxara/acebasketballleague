@@ -85,12 +85,18 @@
       {% endif %}
     </section>
 
-    <section class="card">
+    <section class="card player-teams">
       <h2>Teams</h2>
       <p class="note">Every team, newest season first. A season can list more than one team when a player moved.</p>
+      {% set guest_rows = history | selectattr("season_team", "equalto", "Guest") | list %}
       {% if not history %}
         <p class="note">No season history yet.</p>
       {% else %}
+        {% if guest_rows %}
+          <button type="button" class="guest-toggle" id="show-guest-history" aria-pressed="false" data-count="{{ guest_rows | length }}">
+            Show guest appearances ({{ guest_rows | length }})
+          </button>
+        {% endif %}
         <div class="table-wrap">
           <table class="stats-table player-history stack-mobile">
             <thead>
@@ -106,7 +112,7 @@
             </thead>
             <tbody>
               {% for row in history %}
-                <tr>
+                <tr{% if row.season_team == "Guest" %} class="guest-history-row"{% endif %}>
                   <td class="row-title">
                     {% if row.season_slug %}
                       <a class="table-link" href="{{ url_for('season_record', slug=row.season_slug) }}">{{ row.season }}</a>
@@ -140,4 +146,18 @@
       {% endif %}
     </section>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    document.getElementById("show-guest-history")?.addEventListener("click", function () {
+      const showing = this.getAttribute("aria-pressed") !== "true";
+      this.setAttribute("aria-pressed", showing ? "true" : "false");
+      this.closest(".player-teams").classList.toggle("show-guests", showing);
+      const count = this.dataset.count;
+      this.textContent = showing
+        ? "Hide guest appearances (" + count + ")"
+        : "Show guest appearances (" + count + ")";
+    });
+  </script>
 {% endblock %}

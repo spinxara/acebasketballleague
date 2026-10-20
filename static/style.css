@@ -582,6 +582,30 @@ h3 {
   white-space: nowrap;
 }
 
+.guest-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.guest-toggle:hover,
+.guest-toggle[aria-pressed="true"] {
+  border-color: var(--gold);
+  background: #fff8e1;
+}
+
+.player-teams:not(.show-guests) .guest-history-row {
+  display: none;
+}
+
 .player-history td.row-title {
   white-space: nowrap;
 }
