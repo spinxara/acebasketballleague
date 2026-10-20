@@ -491,6 +491,19 @@ h3 {
   font-weight: bold;
 }
 
+.watch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.youtube-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
 .rules-link {
   display: inline-block;
   margin-top: 8px;
@@ -2208,6 +2221,44 @@ h3 {
 
   .stack-mobile td.row-title::before {
     content: none;
+  }
+
+  .stack-mobile tr.season-result-row {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .stack-mobile tr.season-result-row:active {
+    background: #f3efe4;
+  }
+
+  .stack-mobile tr.season-result-row:has(.season-card-link:focus-visible) {
+    outline: 2px solid #7a5b00;
+    outline-offset: 2px;
+  }
+
+  .season-card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .stack-mobile tr.season-result-row td.row-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .stack-mobile tr.season-result-row td.row-title::after {
+    content: "";
+    width: 9px;
+    height: 9px;
+    flex: none;
+    margin-right: 4px;
+    border-top: 2px solid #7a5b00;
+    border-right: 2px solid #7a5b00;
+    transform: rotate(45deg);
   }
 
   .stack-mobile td.wrap-cell {

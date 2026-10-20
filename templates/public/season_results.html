@@ -38,7 +38,7 @@
           </thead>
           <tbody>
             {% for row in seasons %}
-              <tr>
+              <tr class="season-result-row">
                 <td class="row-title">{{ row.season or "—" }}</td>
                 <td data-label="Status">
                   {% if row.status_label or row.status %}
@@ -89,7 +89,7 @@
                 <td class="wrap-cell notes-cell" data-label="Notes">{{ row.notes or "—" }}</td>
                 <td data-label="Season Page">
                   {% if row.slug %}
-                    <a class="table-link" href="{{ url_for('season_record', slug=row.slug) }}">Open</a>
+                    <a class="table-link season-card-link" href="{{ url_for('season_record', slug=row.slug) }}" aria-label="Open {{ row.season }}">Open</a>
                   {% else %}
                     —
                   {% endif %}

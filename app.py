@@ -2223,6 +2223,17 @@ def season_weeks(rows):
     return weeks
 
 
+def tournament_round_rank(label):
+    key = re.sub(r"[^a-z0-9]+", "", (label or "").lower())
+    if "semi" in key:
+        return 1
+    if "quarter" in key:
+        return 2
+    if key in {"final", "finals", "championship"} or key.endswith("final"):
+        return 0
+    return 3
+
+
 def load_tournament_matches(season):
     rows = fetch_supabase_rows(
         "tournament_matches",
@@ -2246,7 +2257,7 @@ def load_tournament_matches(season):
             "winner_class": team_badge_class(winner),
             "played_at": format_record_date(row.get("played_at")),
         })
-    matches.sort(key=lambda item: item["match_no"])
+    matches.sort(key=lambda item: (tournament_round_rank(item["round"]), item["match_no"]))
     return matches
 
 
