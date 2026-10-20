@@ -434,6 +434,12 @@ h3 {
   cursor: pointer;
 }
 
+.team-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .team-pill {
   display: inline-block;
   font-weight: bold;
@@ -489,6 +495,91 @@ h3 {
 .table-link {
   color: #7a5b00;
   font-weight: bold;
+}
+
+.player-name-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: normal;
+}
+
+.player-career {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-career li {
+  margin: 0;
+  padding: 12px;
+  background: #fbf8f0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.player-career-value {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.player-career-label {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.player-awards {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-award {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  background: #fbf8f0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.honor-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.honor-mark {
+  display: inline-block;
+  background: #fde68a;
+  color: #78350f;
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.player-history td.row-title {
+  white-space: nowrap;
 }
 
 .watch-link {

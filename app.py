@@ -89,7 +89,7 @@ PUBLIC_NAV = [
         "label": "Stats",
         "children": [
             {"id": "season-results", "label": "Season Results", "endpoint": "season_results"},
-            {"id": "member-stats", "label": "Member Stats", "endpoint": "member_stats"},
+            {"id": "member-stats", "label": "All-Time Members", "endpoint": "member_stats"},
             {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
             {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
         ],
@@ -993,6 +993,17 @@ def supabase_request(path, method="GET", body=None, extra_headers=None):
     return payload.decode("utf-8")
 
 
+def fetch_stats_rows(table, columns, order=None):
+    # player_id is optional until player_stats_add_player_id.sql has been run.
+    try:
+        return fetch_supabase_rows(table, f"{columns},player_id", order=order)
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if "player_id" in message and "column" in message:
+            return fetch_supabase_rows(table, columns, order=order)
+        raise
+
+
 def fetch_supabase_rows(table, columns, order=None, filters=None):
     params = {"select": columns}
     if order:
@@ -1785,6 +1796,88 @@ def format_fraction_win_rate(value):
     return f"{rate:.1f}%"
 
 
+def load_player_directory():
+    try:
+        rows = fetch_supabase_rows("players", "id,display_name,non_member,comments")
+    except RuntimeError:
+        return {}, {}
+    by_id = {}
+    by_name = {}
+    for row in rows:
+        player_id = str(row.get("id") or "").strip()
+        name = (row.get("display_name") or "").strip()
+        if not player_id or not name:
+            continue
+        player = {
+            "id": player_id,
+            "display_name": name,
+            "non_member": bool(row.get("non_member")),
+            "comments": (row.get("comments") or "").strip(),
+        }
+        by_id[player_id] = player
+        by_name.setdefault(name, []).append(player)
+    return by_id, by_name
+
+
+def load_played_ids_by_name_season():
+    # Lineups identify which person played when two players share a display name.
+    try:
+        rows = fetch_supabase_rows("player_played_games", "name,season,player_id")
+    except RuntimeError:
+        return {}
+    grouped = {}
+    for row in rows:
+        player_id = str(row.get("player_id") or "").strip()
+        name = (row.get("name") or "").strip()
+        season = (row.get("season") or "").strip()
+        if not player_id or not name or not season:
+            continue
+        grouped.setdefault((name, season), set()).add(player_id)
+    return grouped
+
+
+def attribute_stat_player_id(row, by_name, played_index, name_key="player"):
+    player_id = str(row.get("player_id") or "").strip()
+    if player_id:
+        return player_id
+    name = (row.get(name_key) or "").strip()
+    matches = by_name.get(name) or []
+    if len(matches) == 1:
+        return matches[0]["id"]
+    season = (row.get("season") or "").strip()
+    played_ids = played_index.get((name, season), set())
+    known_ids = {player["id"] for player in matches}
+    if known_ids:
+        played_ids = played_ids & known_ids
+    if len(played_ids) == 1:
+        return next(iter(played_ids))
+    return ""
+
+
+def counted_win_rate(wins, games):
+    if not games:
+        return "—"
+    return format_win_rate((wins / games) * 100)
+
+
+def season_play_buckets(rows, by_name, played_index):
+    buckets = {}
+    for row in rows:
+        player_id = attribute_stat_player_id(row, by_name, played_index)
+        if not player_id:
+            continue
+        bucket = buckets.setdefault(
+            player_id,
+            {"games": 0, "wins": 0, "seasons": set()},
+        )
+        bucket["games"] += stat_count(row.get("season_games"))
+        bucket["wins"] += stat_count(row.get("season_wins"))
+        season = (row.get("season") or "").strip()
+        if season:
+            bucket["seasons"].add(season)
+    return buckets
+
+
 def load_member_stats():
     # The totals table is derived, so ask Supabase to rebuild it before reading.
     # A stale read is better than a failed page, so refresh errors are ignored.
@@ -1793,25 +1886,115 @@ def load_member_stats():
     except RuntimeError:
         pass
 
-    rows = fetch_supabase_rows(
+    rows = fetch_stats_rows(
         "player_stats_total",
         MEMBER_STATS_COLUMNS,
         order="player.asc",
     )
-    return [
-        {
-            "player": row.get("player") or "—",
-            "total_games": stat_count(row.get("total_games")),
-            "total_wins": stat_count(row.get("total_wins")),
-            "win_rate": format_win_rate(row.get("total_win_rates")),
-            "total_seasons": stat_count(row.get("total_seasons")),
+    by_id, by_name = load_player_directory()
+    played_index = load_played_ids_by_name_season()
+    season_rows = fetch_stats_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
+    buckets = season_play_buckets(season_rows, by_name, played_index)
+    listed = set()
+    players = []
+
+    for row in rows:
+        name = (row.get("player") or "").strip()
+        player_id = attribute_stat_player_id(row, by_name, played_index)
+        player = by_id.get(player_id) or {}
+        games = stat_count(row.get("total_games"))
+        wins = stat_count(row.get("total_wins"))
+        seasons = stat_count(row.get("total_seasons"))
+        win_rate_value = row.get("total_win_rates")
+        same_name = by_name.get(name) or []
+        # Totals are grouped by name, so split shared names using each person's seasons.
+        if player_id and len(same_name) > 1 and player_id in buckets:
+            bucket = buckets[player_id]
+            games = bucket["games"]
+            wins = bucket["wins"]
+            seasons = len(bucket["seasons"])
+            win_rate_value = (wins / games) * 100 if games else None
+        players.append({
+            "player": name or "—",
+            "player_id": player_id,
+            "player_note": player.get("comments") or "",
+            "total_games": games,
+            "total_wins": wins,
+            "win_rate": format_win_rate(win_rate_value),
+            "total_seasons": seasons,
             "season_titles": stat_count(row.get("season_titles")),
             "season_runnerups": stat_count(row.get("season_runnerups")),
             "tournament_titles": stat_count(row.get("tournament_titles")),
             "tournament_runnerups": stat_count(row.get("tournament_runnerups")),
-        }
-        for row in rows
-    ]
+        })
+        if player_id:
+            listed.add(player_id)
+
+    for player_id, bucket in buckets.items():
+        if player_id in listed:
+            continue
+        player = by_id.get(player_id)
+        if not player or player["non_member"]:
+            continue
+        games = bucket["games"]
+        wins = bucket["wins"]
+        players.append({
+            "player": player["display_name"],
+            "player_id": player_id,
+            "player_note": player["comments"],
+            "total_games": games,
+            "total_wins": wins,
+            "win_rate": counted_win_rate(wins, games),
+            "total_seasons": len(bucket["seasons"]),
+            "season_titles": 0,
+            "season_runnerups": 0,
+            "tournament_titles": 0,
+            "tournament_runnerups": 0,
+        })
+
+    players.sort(key=lambda row: ((row["player"] or "").casefold(), row["player_note"]))
+    current_season, teams_by_player = current_roster_by_player()
+    for player in players:
+        player["current_teams"] = teams_by_player.get(player.get("player_id") or "", [])
+    return players, current_season
+
+
+def current_season_label(seasons):
+    for status in ("active", "planned"):
+        match = next((row for row in seasons if row.get("status") == status), None)
+        if match:
+            return match["season"]
+    if seasons:
+        return seasons[0]["season"]
+    return ""
+
+
+def current_roster_by_player():
+    try:
+        seasons = load_season_records()
+    except RuntimeError:
+        return "", {}
+    label = current_season_label(seasons)
+    if not label:
+        return "", {}
+    try:
+        members = load_team_members(label)
+    except RuntimeError:
+        return label, {}
+    by_player = {}
+    for member in members:
+        player_id = str(member.get("player_id") or "").strip()
+        team = (member.get("season_team") or "").strip()
+        if not player_id or not team:
+            continue
+        teams = by_player.setdefault(player_id, [])
+        if any(item["team"] == team for item in teams):
+            continue
+        teams.append({
+            "team": team,
+            "team_class": team_badge_class(team),
+        })
+    return label, by_player
 
 
 def team_badge_class(team):
@@ -1826,7 +2009,9 @@ def player_season_sort_key(row):
 
 
 def load_player_season_stats():
-    rows = fetch_supabase_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
+    rows = fetch_stats_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
+    by_id, by_name = load_player_directory()
+    played_index = load_played_ids_by_name_season()
     players = []
     seasons = set()
 
@@ -1835,9 +2020,14 @@ def load_player_season_stats():
         if season:
             seasons.add(season)
         team = (row.get("season_team") or "").strip()
+        name = (row.get("player") or "").strip() or "—"
+        player_id = attribute_stat_player_id(row, by_name, played_index)
+        player = by_id.get(player_id) or {}
         players.append({
             "season": season,
-            "player": row.get("player") or "—",
+            "player": name,
+            "player_id": player_id,
+            "player_note": player.get("comments") or "",
             "season_team": team or "—",
             "team_class": team_badge_class(team),
             "season_games": stat_count(row.get("season_games")),
@@ -2079,6 +2269,13 @@ def sitemap_paths():
                     paths.append(path)
     except RuntimeError:
         pass
+    try:
+        for row in fetch_supabase_rows("players", "id"):
+            player_id = str(row.get("id") or "").strip()
+            if player_id:
+                paths.append(f"/players/{player_id}")
+    except RuntimeError:
+        pass
     return paths
 
 
@@ -2151,6 +2348,7 @@ def team_logo_static_path(code):
 
 
 def season_roster_sections(members):
+    by_id, _by_name = load_player_directory()
     sections = []
     for team, rows in group_roster_by_team(members):
         if not rows:
@@ -2162,7 +2360,16 @@ def season_roster_sections(members):
             "show_name": code in TEAM_DISPLAY_NAMES,
             "team_class": team_badge_class(team),
             "logo": team_logo_static_path(code),
-            "players": [(row.get("player") or "—").strip() or "—" for row in rows],
+            "players": [
+                {
+                    "name": (row.get("player") or "—").strip() or "—",
+                    "player_id": str(row.get("player_id") or "").strip(),
+                    "note": (
+                        by_id.get(str(row.get("player_id") or "").strip()) or {}
+                    ).get("comments") or "",
+                }
+                for row in rows
+            ],
         })
     return sections
 
@@ -2319,12 +2526,228 @@ def season_record(slug):
     )
 
 
+def same_team(left, right):
+    left_code = (left or "").strip().upper()
+    right_code = (right or "").strip().upper()
+    return bool(left_code) and left_code == right_code
+
+
+def same_person(left, right):
+    left_name = (left or "").strip().casefold()
+    right_name = (right or "").strip().casefold()
+    return bool(left_name) and left_name == right_name
+
+
+CONTEST_NOTE_PATTERNS = (
+    (
+        re.compile(
+            r"3\s*-?\s*point\s+(?:content|contest)\s+winner\s*:\s*(?P<name>.+)",
+            re.IGNORECASE,
+        ),
+        "3-point contest",
+    ),
+    (
+        re.compile(
+            r"(?:1\s*:\s*1|one[\s-]*on[\s-]*one)\s+"
+            r"(?:tourney|tournament|contest|content)\s+winner\s*:\s*(?P<name>.+)",
+            re.IGNORECASE,
+        ),
+        "One-on-one contest",
+    ),
+)
+PLAYER_AWARD_LABELS = ("Season title", "Tournament title", "MIP")
+AWARD_SORT_ORDER = {
+    "Season title": 0,
+    "Tournament title": 1,
+    "MIP": 2,
+    "3-point contest": 3,
+    "One-on-one contest": 4,
+}
+
+
+def contest_winners(notes):
+    found = []
+    for line in (notes or "").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        for pattern, label in CONTEST_NOTE_PATTERNS:
+            match = pattern.search(text)
+            if not match:
+                continue
+            name = match.group("name").strip(" .")
+            if name:
+                found.append({"label": label, "winner": name})
+    return found
+
+
+def player_awards(history, display_name, records):
+    awards = []
+    seen = set()
+    seasons_played = set()
+    for row in history:
+        season = row.get("season") or ""
+        if season:
+            seasons_played.add(season)
+        for label in row.get("marks") or []:
+            if label not in PLAYER_AWARD_LABELS:
+                continue
+            team = row.get("season_team") or ""
+            if label == "MIP":
+                team = ""
+            key = (season, label, team)
+            if key in seen:
+                continue
+            seen.add(key)
+            awards.append({
+                "season": season,
+                "season_slug": row.get("season_slug") or "",
+                "label": label,
+                "team": team,
+                "team_class": row.get("team_class") or "",
+            })
+
+    for record in records.values():
+        season = record.get("season") or ""
+        if season not in seasons_played:
+            continue
+        for contest in contest_winners(record.get("notes")):
+            if not same_person(display_name, contest["winner"]):
+                continue
+            key = (season, contest["label"], "")
+            if key in seen:
+                continue
+            seen.add(key)
+            awards.append({
+                "season": season,
+                "season_slug": record.get("slug") or "",
+                "label": contest["label"],
+                "team": "",
+                "team_class": "",
+            })
+
+    awards.sort(
+        key=lambda row: (
+            *season_sort_key(row),
+            AWARD_SORT_ORDER.get(row["label"], 9),
+        )
+    )
+    return awards
+
+
+def history_marks(team, display_name, season_record):
+    if not season_record:
+        return []
+    marks = []
+    if same_team(team, season_record.get("season_winner")):
+        marks.append("Season title")
+    if same_team(team, season_record.get("season_runnerup")):
+        marks.append("Season runner-up")
+    if same_team(team, season_record.get("tournament_winner")):
+        marks.append("Tournament title")
+    if same_team(team, season_record.get("tournament_runnerup")):
+        marks.append("Tournament runner-up")
+    if same_person(display_name, season_record.get("mip_award")):
+        marks.append("MIP")
+    return marks
+
+
+def empty_career():
+    return {
+        "total_games": 0,
+        "total_wins": 0,
+        "win_rate": "—",
+        "total_seasons": 0,
+        "season_titles": 0,
+        "season_runnerups": 0,
+        "tournament_titles": 0,
+        "tournament_runnerups": 0,
+    }
+
+
+def load_public_player(player_id):
+    rows = fetch_supabase_rows(
+        "players",
+        "id,display_name,non_member,comments",
+        filters={"id": f"eq.{player_id}"},
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "id": str(row.get("id") or player_id),
+        "display_name": (row.get("display_name") or "").strip() or "Player",
+        "non_member": bool(row.get("non_member")),
+        "comments": (row.get("comments") or "").strip(),
+    }
+
+
+def load_player_profile(player_id):
+    player = load_public_player(player_id)
+    if player is None:
+        return None
+    totals, _current_season = load_member_stats()
+    _, season_rows = load_player_season_stats()
+    records = {row["season"]: row for row in load_season_records()}
+    career = next(
+        (row for row in totals if row.get("player_id") == player["id"]),
+        None,
+    )
+    history = []
+    for row in season_rows:
+        if row.get("player_id") != player["id"]:
+            continue
+        record = records.get(row["season"])
+        history.append({
+            **row,
+            "season_slug": record["slug"] if record else "",
+            "marks": history_marks(row["season_team"], player["display_name"], record),
+        })
+    history.sort(
+        key=lambda row: (*season_sort_key(row), (row.get("season_team") or "").lower())
+    )
+    awards = player_awards(history, player["display_name"], records)
+    return player, career or empty_career(), history, awards
+
+
+@app.route("/players/<player_id>")
+def player_page(player_id):
+    try:
+        UUID(player_id)
+    except ValueError:
+        abort(404)
+
+    load_error = None
+    player = None
+    career = empty_career()
+    history = []
+    awards = []
+    try:
+        profile = load_player_profile(player_id)
+        if profile is None:
+            abort(404)
+        player, career, history, awards = profile
+    except RuntimeError as exc:
+        load_error = str(exc)
+
+    return render_template(
+        "public/player.html",
+        active="member-stats",
+        player=player,
+        career=career,
+        history=history,
+        awards=awards,
+        load_error=load_error,
+    )
+
+
 @app.route("/member-stats")
 def member_stats():
     load_error = None
     players = []
+    current_season = ""
     try:
-        players = load_member_stats()
+        players, current_season = load_member_stats()
     except RuntimeError as exc:
         load_error = str(exc)
 
@@ -2332,6 +2755,7 @@ def member_stats():
         "public/member_stats.html",
         active="member-stats",
         players=players,
+        current_season=current_season,
         load_error=load_error,
     )
 

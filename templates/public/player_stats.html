@@ -51,7 +51,16 @@
             <tbody>
               {% for row in players %}
                 <tr>
-                  <td class="row-title">{{ row.player }}</td>
+                  <td class="row-title">
+                    {% if row.player_id %}
+                      <a class="table-link" href="{{ url_for('player_page', player_id=row.player_id) }}">{{ row.player }}</a>
+                    {% else %}
+                      {{ row.player }}
+                    {% endif %}
+                    {% if row.player_note %}
+                      <span class="player-name-note">{{ row.player_note }}</span>
+                    {% endif %}
+                  </td>
                   <td data-label="Team">
                     <span class="team-pill {{ row.team_class }}">{{ row.season_team }}</span>
                   </td>

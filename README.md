@@ -14,8 +14,9 @@ Live site: https://acebasketballteam.com
 - Guidebook hub at `/home` (nav label Home): rules, what’s included, social links, and sponsor logos.
 - About page with the Sunday schedule, Glendale court, and a Korean introduction that links to `/ko`.
 - Top navigation: Home (`/home`), About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
-- Season results, member stats, player stats by season, and team matchups (loaded from Supabase). Each season also has a page at `/season/Jul-Sep-2026` with the roster, standings, tournament matches, photos, and game videos.
-- Team moments photo gallery.
+- Season results, member stats, player stats by season, and team matchups (loaded from Supabase). Season Results lists each season and links to `/season/Jul-Sep-2026`. On a phone, the whole season card opens that page. Team codes use the same color pills as the rest of the site.
+- Each season page shows the roster (full name and logo when a file exists), standings, awards, season photos, tournament matches, and game videos. The Final is listed above the Semi-Final. A game with a YouTube link shows a small YouTube mark next to Watch. Season photos are on this page, not on the Season Results list.
+- Team moments photo gallery, in the order saved from admin.
 - League game rules (version 3.1), linked from the home page and the footer.
 - Sponsor row on the home page and a "Supported by" line in the footer. Names, links, and logos live in `SPONSORS` in `app.py`.
 
@@ -34,12 +35,13 @@ Live site: https://acebasketballteam.com
 
 - One-level undo for the most recent draft pick.
 - Full draft reset for choosing new captains and restarting (reloads the active player pool).
-- Team moments upload and delete (JPEG, PNG, WEBP, or GIF; 10MB max; optional 280-character caption).
+- Admin navigation is grouped into Preseason (Players, Seasons, Draft Room, Roster), Season (Games), Postseason (Tournament), and Others (Team Moments). Dashboard is the admin home.
+- Team moments upload, reorder, and delete (JPEG, PNG, WEBP, or GIF; 10MB max; optional 280-character caption). Reorder needs the `sort_order` column (see Supabase).
 - Players page to list, add, and update league members and non-members (`active` / `non_member` / comments) in Supabase.
-- Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, and season page links.
+- Seasons page to add seasons and edit status (`planned` / `active` / `completed`), dates, winners/runner-ups, MIP, notes, season page links, and season photos (tournament winner, MIP, and extra shots).
 - Roster page to view a season’s `team_members`, move players between NPS/KCN/BK, add/remove players, and clear a season roster (initial roster still comes from Draft Room).
 - Games page to save one Sunday: six `game_results` (winner, no score) and `player_played_games` lineups, then `refresh_all_stats`. Each game can store an optional YouTube link, including after the Sunday is already saved.
-- Placeholder pages for dashboard, games, and tournament (not wired yet).
+- Placeholder pages for dashboard and tournament (not wired yet).
 
 Visiting `/draft` redirects to `/admin/draft`.
 
@@ -52,17 +54,23 @@ Visiting `/draft` redirects to `/admin/draft`.
 ├── runtime.txt                 # Python 3.12.8
 ├── templates/
 │   ├── public/                 # Public league pages
-│   └── admin/                  # Login, draft, players, seasons, moments, placeholders
-├── static/                     # CSS, JS, and sponsor logos in static/sponsors/
+│   └── admin/                  # Login, draft, players, seasons, roster, games, moments, placeholders
+├── static/                     # CSS, JS, sponsor logos in static/sponsors/, team logos in static/teams/
 └── supabase/
     ├── team_moments.sql                      # Team Moments table and storage bucket
+    ├── team_moments_add_sort_order.sql       # sort_order for the public gallery
+    ├── season_photos.sql                     # season and photo_kind on team_moments
     ├── players.sql                           # League players table and seed
     ├── players_drop_display_name_unique.sql  # Drop unique name constraint if present
     ├── players_rename_guest_to_non_member.sql
+    ├── players_seed_non_members.sql          # Seed (NM) non-members and re-link
     ├── team_members_add_player_id.sql        # Link team_members to players.id
     ├── team_members_player_id_unique.sql     # Unique on (season, player_id), not name
+    ├── team_members_admin_policies.sql       # Roster writes
     ├── player_stats_add_player_id.sql        # Link stats / played-games to players.id
-    └── players_seed_non_members.sql          # Seed (NM) non-members and re-link
+    ├── seasons_admin_policies.sql            # Season add / edit / delete
+    ├── games_admin_policies.sql              # Games and lineup writes
+    └── game_results_add_youtube_url.sql      # youtube_url on game_results
 ```
 
 Older files such as `app_v1.00.py` and `advanced_random_order.py` are leftover experiments and are not used by the current app.
@@ -156,11 +164,15 @@ Indexing usually takes days to a few weeks.
 
 ### Public pages
 
-Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Open a season from Season Results for that season’s roster, standings, tournament matches, photos, and game videos. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Open a season from Season Results for that season’s roster, standings, awards, photos, tournament, and game videos. On a phone, tap the season card. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
 
 ### Sponsors
 
 Add or edit entries in `SPONSORS` in `app.py`. Each sponsor can have a name, an optional URL, an optional logo path under `static/`, and `featured: True` to show it first. The home page shows a logo when one is set, otherwise the name. Every sponsor name also appears in the footer. Current sponsors are Clan H. Hahn, MD and AD-VISOR Creative.
+
+### Team logos
+
+Season roster cards show a logo from `static/teams/{code}.png`, or `{code}.jpg` if the PNG is missing. The code is the lowercase team abbreviation (`nps.jpg`, `kcn.jpg`). Full names live in `TEAM_DISPLAY_NAMES` in `app.py`. A code with no file shows the name only. Current files cover NPS, KCN, BK, CKD, UBRG, and ZOO. NWO, MMT, and KARU have names and no logo yet.
 
 ### Admin login
 
@@ -192,11 +204,20 @@ Draft state is shared live with everyone connected. Seed and draft socket events
 3. Filter by All, Active, Inactive, or Non-member.
 4. Edit any rows, then click **Save all changes** once. Deactivate instead of deleting.
 
+### Seasons
+
+1. Open **Seasons** in admin.
+2. Add a season or edit status, dates, winners, runner-ups, MIP, notes, and the season page link.
+3. Upload a tournament winner photo, an MIP photo, and extra season photos. Those also appear on Team Moments and on that season’s public page.
+
 ### Team moments
 
 1. Open **Team Moments** in admin.
-2. Upload one or more photos with an optional shared caption.
-3. Delete a moment to remove it from storage and the gallery.
+2. Upload one or more photos with an optional shared caption. New uploads appear first.
+3. Drag a photo, or use **Earlier** and **Later**, then click **Save order**. The public gallery follows that order.
+4. Delete a moment to remove it from storage and the gallery.
+
+**Save order** stays hidden until `supabase/team_moments_add_sort_order.sql` has been run. Until then the gallery stays newest first.
 
 ## Supabase
 
@@ -209,8 +230,9 @@ Public stats pages expect these tables (or views):
 - `team_moments`
 - `players` (league members and non-members; draft pool = `active` and not `non_member`)
 - `team_members` (per-season roster; created from Draft Room, managed on Roster)
-- `tournament_matches` (semi-final and final rows for each season page)
+- `tournament_matches` (semi-final and final rows for each season page; the page lists the Final above the Semi-Final)
 - `game_results` (regular-season games, including `youtube_url`)
+- `player_played_games` (lineups saved with each Sunday on the Games page)
 
 Team Moments also uses a public `team-moments` storage bucket. To create the table, policies, and bucket, run `supabase/team_moments.sql` in the Supabase SQL editor.
 
@@ -226,7 +248,9 @@ To add the league members table and link season rosters / stats:
 
 For Seasons admin writes (add / edit / delete), run `supabase/seasons_admin_policies.sql` so RLS allows the API key to modify the existing `seasons` table.
 
-For season winner photos, MIP photos, and extra season photos, run `supabase/season_photos.sql`. That adds `season` and `photo_kind` to `team_moments`. Those photos use the existing `team-moments` bucket and appear on Team Moments.
+For season winner photos, MIP photos, and extra season photos, run `supabase/season_photos.sql`. That adds `season` and `photo_kind` (`winner`, `mip`, or `season`) to `team_moments`. Those photos use the existing `team-moments` bucket, appear on Team Moments, and show on the matching season page.
+
+To let admins reorder Team Moments, run `supabase/team_moments_add_sort_order.sql`. That adds `sort_order` and keeps the current newest-first order until someone saves a new one. Lower numbers appear first.
 
 For Draft Room “Save to roster” and Roster admin writes (insert/update/delete on `team_members`), run `supabase/team_members_admin_policies.sql` so RLS allows the API key to modify roster rows.
 
@@ -235,7 +259,7 @@ For Games admin writes (`game_results` and `player_played_games`), run `supabase
 ## Notes
 
 - The Render service must stay running for the public site and for Google to crawl it.
-- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Use the **Roster** admin page afterward for mid-season trades, adds/removals, or clearing a season so Draft can save again. Use **Games** to enter a Sunday (six games and lineups). Tournament and dashboard admin pages are still placeholders. Seasons metadata is managed on the Seasons admin page.
+- After a completed draft, use **Save to roster** on the Draft Room page to write NPS/KCN/BK members into `team_members` for a chosen season. Use the **Roster** admin page afterward for mid-season trades, adds/removals, or clearing a season so Draft can save again. Use **Games** to enter a Sunday (six games and lineups). Tournament and dashboard admin pages are still placeholders. Season details and photos are managed on the Seasons admin page.
 
 ## Maintainer
 

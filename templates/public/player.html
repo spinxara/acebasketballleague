@@ -1,0 +1,143 @@
+{% extends "public/base.html" %}
+
+{% block title %}{% if player %}{{ player.display_name }} · {% endif %}ACE Basketball League Guidebook & Stats{% endblock %}
+{% block description %}{% if player %}Teams, games, and titles for {{ player.display_name }} in the ACE Basketball League.{% else %}Player page for the ACE Basketball League.{% endif %}{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <p class="note season-back">
+      <a class="table-link" href="{{ url_for('member_stats') }}">All-Time Members</a>
+    </p>
+    {% if load_error %}
+      <h1>Player</h1>
+      <p class="error-note">Could not load this player. {{ load_error }}</p>
+    {% elif player %}
+      <h1>{{ player.display_name }}</h1>
+      <p class="lead">Teams and results across ACE seasons.</p>
+      {% if player.comments %}
+        <p class="note">{{ player.comments }}</p>
+      {% endif %}
+      {% if player.non_member %}
+        <p class="note">Non-member</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {% if player and not load_error %}
+    <section class="card">
+      <h2>Career</h2>
+      <ul class="player-career">
+        <li>
+          <span class="player-career-value">{{ career.total_games }}</span>
+          <span class="player-career-label">Games</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.total_wins }}</span>
+          <span class="player-career-label">Wins</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.win_rate }}</span>
+          <span class="player-career-label">Win rate</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.total_seasons }}</span>
+          <span class="player-career-label">Seasons</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.season_titles }}</span>
+          <span class="player-career-label">Season titles</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.season_runnerups }}</span>
+          <span class="player-career-label">Season runner-ups</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.tournament_titles }}</span>
+          <span class="player-career-label">Tournament titles</span>
+        </li>
+        <li>
+          <span class="player-career-value">{{ career.tournament_runnerups }}</span>
+          <span class="player-career-label">Tournament runner-ups</span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Awards</h2>
+      {% if not awards %}
+        <p class="note">No awards yet.</p>
+      {% else %}
+        <ul class="player-awards">
+          {% for award in awards %}
+            <li class="player-award">
+              <span class="honor-mark">{{ award.label }}</span>
+              {% if award.season_slug %}
+                <a class="table-link" href="{{ url_for('season_record', slug=award.season_slug) }}">{{ award.season }}</a>
+              {% else %}
+                <span>{{ award.season or "—" }}</span>
+              {% endif %}
+              {% if award.team %}
+                <span class="team-pill {{ award.team_class }}">{{ award.team }}</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Teams</h2>
+      <p class="note">Every team, newest season first. A season can list more than one team when a player moved.</p>
+      {% if not history %}
+        <p class="note">No season history yet.</p>
+      {% else %}
+        <div class="table-wrap">
+          <table class="stats-table player-history stack-mobile">
+            <thead>
+              <tr>
+                <th>Season</th>
+                <th>Team</th>
+                <th class="numeric">Games</th>
+                <th class="numeric">Wins</th>
+                <th class="numeric">Win Rate</th>
+                <th>Results</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in history %}
+                <tr>
+                  <td class="row-title">
+                    {% if row.season_slug %}
+                      <a class="table-link" href="{{ url_for('season_record', slug=row.season_slug) }}">{{ row.season }}</a>
+                    {% else %}
+                      {{ row.season or "—" }}
+                    {% endif %}
+                  </td>
+                  <td data-label="Team">
+                    <span class="team-pill {{ row.team_class }}">{{ row.season_team }}</span>
+                  </td>
+                  <td class="numeric" data-label="Games">{{ row.season_games }}</td>
+                  <td class="numeric" data-label="Wins">{{ row.season_wins }}</td>
+                  <td class="numeric" data-label="Win Rate">{{ row.win_rate }}</td>
+                  <td data-label="Results">
+                    {% if row.marks %}
+                      <ul class="honor-list">
+                        {% for mark in row.marks %}
+                          <li class="honor-mark">{{ mark }}</li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td class="wrap-cell" data-label="Comments">{{ row.comments or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

@@ -48,7 +48,16 @@
               {% endif %}
               <ul>
                 {% for player in team.players %}
-                  <li>{{ player }}</li>
+                  <li>
+                    {% if player.player_id %}
+                      <a class="table-link" href="{{ url_for('player_page', player_id=player.player_id) }}">{{ player.name }}</a>
+                    {% else %}
+                      {{ player.name }}
+                    {% endif %}
+                    {% if player.note %}
+                      <span class="player-name-note">{{ player.note }}</span>
+                    {% endif %}
+                  </li>
                 {% endfor %}
               </ul>
             </article>
