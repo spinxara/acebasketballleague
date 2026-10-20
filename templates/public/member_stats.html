@@ -13,7 +13,7 @@
       {% if current_season %}
         Current team is the {{ current_season }} roster.
       {% endif %}
-      Click a name for titles, win rate, and season history. Click any column heading to sort.
+      Click a player for titles, win rate, and season history. Click any column heading to sort.
     </p>
   </section>
 
@@ -37,16 +37,18 @@
           </thead>
           <tbody>
             {% for row in players %}
-              <tr>
+              <tr{% if row.player_id %} class="player-result-row" data-href="{{ url_for('player_page', player_id=row.player_id) }}"{% endif %}>
                 <td class="row-title">
-                  {% if row.player_id %}
-                    <a class="table-link" href="{{ url_for('player_page', player_id=row.player_id) }}">{{ row.player }}</a>
-                  {% else %}
-                    {{ row.player }}
-                  {% endif %}
-                  {% if row.player_note %}
-                    <span class="player-name-note">{{ row.player_note }}</span>
-                  {% endif %}
+                  <span>
+                    {% if row.player_id %}
+                      <a class="table-link player-card-link" href="{{ url_for('player_page', player_id=row.player_id) }}">{{ row.player }}</a>
+                    {% else %}
+                      {{ row.player }}
+                    {% endif %}
+                    {% if row.player_note %}
+                      <span class="player-name-note">{{ row.player_note }}</span>
+                    {% endif %}
+                  </span>
                 </td>
                 <td data-label="Current Team">
                   {% if row.current_teams %}
@@ -73,4 +75,14 @@
 
 {% block scripts %}
   <script src="{{ url_for('static', filename='table-sort.js') }}" defer></script>
+  <script>
+    document.querySelectorAll("tr.player-result-row[data-href]").forEach(function (row) {
+      row.addEventListener("click", function (event) {
+        if (event.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = row.getAttribute("data-href");
+      });
+    });
+  </script>
 {% endblock %}

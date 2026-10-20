@@ -328,8 +328,12 @@ h3 {
   background: #f7f1e0;
 }
 
-.stats-table tbody tr:nth-child(even) {
-  background: #fbf8f0;
+.stats-table tr.player-result-row {
+  cursor: pointer;
+}
+
+.stats-table tr.player-result-row:hover td {
+  background: #f7f1e0;
 }
 
 .stats-table th.numeric,
@@ -2314,34 +2318,40 @@ h3 {
     content: none;
   }
 
-  .stack-mobile tr.season-result-row {
+  .stack-mobile tr.season-result-row,
+  .stack-mobile tr.player-result-row {
     position: relative;
     cursor: pointer;
   }
 
-  .stack-mobile tr.season-result-row:active {
+  .stack-mobile tr.season-result-row:active,
+  .stack-mobile tr.player-result-row:active {
     background: #f3efe4;
   }
 
-  .stack-mobile tr.season-result-row:has(.season-card-link:focus-visible) {
+  .stack-mobile tr.season-result-row:has(.season-card-link:focus-visible),
+  .stack-mobile tr.player-result-row:has(.player-card-link:focus-visible) {
     outline: 2px solid #7a5b00;
     outline-offset: 2px;
   }
 
-  .season-card-link::after {
+  .season-card-link::after,
+  .player-card-link::after {
     content: "";
     position: absolute;
     inset: 0;
   }
 
-  .stack-mobile tr.season-result-row td.row-title {
+  .stack-mobile tr.season-result-row td.row-title,
+  .stack-mobile tr.player-result-row td.row-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
   }
 
-  .stack-mobile tr.season-result-row td.row-title::after {
+  .stack-mobile tr.season-result-row td.row-title::after,
+  .stack-mobile tr.player-result-row td.row-title::after {
     content: "";
     width: 9px;
     height: 9px;
