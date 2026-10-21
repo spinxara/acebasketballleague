@@ -2718,6 +2718,10 @@ def history_marks(team, display_name, season_record):
         marks.append("Tournament runner-up")
     if same_person(display_name, season_record.get("mip_award")):
         marks.append("MIP")
+    for contest in contest_winners(season_record.get("notes")):
+        label = contest["label"]
+        if same_person(display_name, contest["winner"]) and label not in marks:
+            marks.append(label)
     return marks
 
 

@@ -86,7 +86,7 @@
     </section>
 
     <section class="card player-teams">
-      <h2>Teams</h2>
+      <h2>Seasons</h2>
       <p class="note">Every team, newest season first. A season can list more than one team when a player moved.</p>
       {% set guest_rows = history | selectattr("season_team", "equalto", "Guest") | list %}
       {% if not history %}
