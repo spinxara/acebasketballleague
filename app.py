@@ -47,6 +47,8 @@ RULES_URL = (
     "1fIlVY1edEn2_5AAxF6eNV0D72vtWwOF4CamZVsxT8q0/edit?usp=sharing"
 )
 YOUTUBE_URL = "https://www.youtube.com/channel/UCZ6oGz5C9yV2RgsykYvAOyA"
+HIGHLIGHT_VIDEO_ID = "e8NAKwoSGjo"
+HIGHLIGHT_VIDEO_TITLE = "LA ACE Highlights 2026"
 INSTAGRAM_URL = "https://www.instagram.com/la_ace_basketball/"
 MAINTAINER_NAME = "Dae Young Roh"
 MAINTAINER_KAKAO = "spinxara"
@@ -285,6 +287,8 @@ def inject_globals():
         "admin_nav": admin_nav,
         "rules_url": RULES_URL,
         "youtube_url": YOUTUBE_URL,
+        "highlight_video_id": HIGHLIGHT_VIDEO_ID,
+        "highlight_video_title": HIGHLIGHT_VIDEO_TITLE,
         "instagram_url": INSTAGRAM_URL,
         "sponsors": sorted(SPONSORS, key=lambda sponsor: not sponsor.get("featured")),
         "last_updated": "September 14, 2026",

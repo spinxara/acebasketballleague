@@ -2669,6 +2669,83 @@ h3 {
   color: var(--gold-soft);
 }
 
+.landing-section.landing-highlight {
+  position: relative;
+  z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px 24px 8px;
+  text-align: center;
+}
+
+.landing-video {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  background: #111;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.landing-video iframe,
+.landing-video-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.landing-video-poster {
+  display: block;
+  padding: 0;
+  background: #111;
+  cursor: pointer;
+}
+
+.landing-video-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.landing-video-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #111;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.landing-video-play svg {
+  width: 34px;
+  height: 34px;
+  margin-left: 4px;
+}
+
+.landing-video-poster:hover .landing-video-play,
+.landing-video-poster:focus-visible .landing-video-play {
+  background: var(--gold-soft);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.landing-video-poster:focus-visible {
+  outline: 2px solid var(--gold-soft);
+  outline-offset: 3px;
+}
+
 .landing-below {
   position: relative;
   z-index: 1;

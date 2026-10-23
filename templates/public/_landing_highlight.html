@@ -1,0 +1,50 @@
+<section class="landing-section landing-highlight">
+  <h2>{{ highlight_heading }}</h2>
+  <div class="landing-video">
+    <button
+      type="button"
+      class="landing-video-poster"
+      data-video-id="{{ highlight_video_id }}"
+      data-video-title="{{ highlight_video_title }}"
+      aria-label="Play {{ highlight_video_title }}"
+    >
+      <img
+        src="https://i.ytimg.com/vi/{{ highlight_video_id }}/hqdefault.jpg"
+        alt=""
+        width="480"
+        height="360"
+      />
+      <span class="landing-video-play" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path fill="currentColor" d="M8 5.5v13l11-6.5z" />
+        </svg>
+      </span>
+    </button>
+  </div>
+  <p>
+    <a
+      class="landing-text-link"
+      href="https://www.youtube.com/watch?v={{ highlight_video_id }}"
+      target="_blank"
+      rel="noopener noreferrer"
+    >{{ highlight_caption }}</a>
+  </p>
+</section>
+<script>
+  (function () {
+    var section = document.currentScript.previousElementSibling;
+    var button = section && section.querySelector(".landing-video-poster");
+    if (!button) return;
+    button.addEventListener("click", function () {
+      var id = button.getAttribute("data-video-id") || "";
+      if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+      var frame = document.createElement("iframe");
+      frame.src = "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1";
+      frame.title = button.getAttribute("data-video-title") || "Highlight";
+      frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+      frame.allowFullscreen = true;
+      frame.referrerPolicy = "strict-origin-when-cross-origin";
+      button.replaceWith(frame);
+    });
+  })();
+</script>
