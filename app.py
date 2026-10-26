@@ -1924,21 +1924,171 @@ def counted_win_rate(wins, games):
     return format_win_rate((wins / games) * 100)
 
 
-def season_play_buckets(rows, by_name, played_index):
+def postgrest_quoted(value):
+    return '"' + str(value).replace('"', '""') + '"'
+
+
+def fetch_filtered_rows(table, columns, filters, page_size=1000):
+    rows = []
+    offset = 0
+    while True:
+        params = {
+            "select": columns,
+            "limit": str(page_size),
+            "offset": str(offset),
+        }
+        params.update(filters or {})
+        payload = supabase_request(f"{table}?{urllib.parse.urlencode(params)}")
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Unexpected Supabase response.") from exc
+        if not isinstance(data, list):
+            raise RuntimeError("Unexpected Supabase response.")
+        rows.extend(data)
+        if len(data) < page_size:
+            return rows
+        offset += page_size
+
+
+def load_lineup_splits(name_seasons):
+    # Season stats are stored by display name. When two people share a name,
+    # count each person's games and wins from the lineup for that season.
+    pairs = sorted({
+        ((name or "").strip(), (season or "").strip())
+        for name, season in name_seasons
+        if (name or "").strip() and (season or "").strip()
+    })
+    if not pairs:
+        return {}
+    clauses = ",".join(
+        f"and(name.eq.{postgrest_quoted(name)},season.eq.{postgrest_quoted(season)})"
+        for name, season in pairs
+    )
+    lineup_rows = fetch_filtered_rows(
+        "player_played_games",
+        "game_id,player_id,name,season,playing_team",
+        {"or": f"({clauses})"},
+    )
+    game_ids = set()
+    for row in lineup_rows:
+        try:
+            game_ids.add(int(row.get("game_id")))
+        except (TypeError, ValueError):
+            continue
+    winners = {}
+    ordered_ids = sorted(game_ids)
+    for start in range(0, len(ordered_ids), 200):
+        chunk = ordered_ids[start:start + 200]
+        result_rows = fetch_supabase_rows(
+            "game_results",
+            "id,winner_team",
+            filters={"id": f"in.({','.join(str(game_id) for game_id in chunk)})"},
+        )
+        for row in result_rows:
+            try:
+                winners[int(row.get("id"))] = (row.get("winner_team") or "").strip().casefold()
+            except (TypeError, ValueError):
+                continue
+    splits = {}
+    for row in lineup_rows:
+        player_id = str(row.get("player_id") or "").strip()
+        name = (row.get("name") or "").strip()
+        season = (row.get("season") or "").strip()
+        team = (row.get("playing_team") or "").strip().casefold()
+        if not player_id or not name or not season or not team:
+            continue
+        try:
+            game_id = int(row.get("game_id"))
+        except (TypeError, ValueError):
+            continue
+        stats = splits.setdefault((name, season, team), {}).setdefault(
+            player_id,
+            {"games": 0, "wins": 0},
+        )
+        stats["games"] += 1
+        if winners.get(game_id) == team:
+            stats["wins"] += 1
+    return splits
+
+
+def shared_name_lineup_splits(rows, by_name):
+    pairs = set()
+    for row in rows:
+        name = (row.get("player") or "").strip()
+        season = (row.get("season") or "").strip()
+        if name and season and len(by_name.get(name) or []) > 1:
+            pairs.add((name, season))
+    return load_lineup_splits(pairs)
+
+
+def known_team_split(split, matches):
+    known = {player["id"] for player in matches}
+    if not split:
+        return {}
+    return {
+        player_id: stats
+        for player_id, stats in split.items()
+        if player_id in known and stats.get("games")
+    }
+
+
+def blended_name_split(row, by_name, played_index, lineup_splits):
+    # One season-team row can mix two players who share a display name.
+    name = (row.get("player") or "").strip()
+    matches = by_name.get(name) or []
+    if len(matches) < 2:
+        return None
+    season = (row.get("season") or "").strip()
+    team = (row.get("season_team") or "").strip().casefold()
+    split = known_team_split(lineup_splits.get((name, season, team)), matches)
+    if len(split) < 2:
+        return None
+    attributed = attribute_stat_player_id(row, by_name, played_index)
+    row_games = stat_count(row.get("season_games"))
+    split_games = sum(stats["games"] for stats in split.values())
+    if attributed and row_games != split_games:
+        return None
+    return split
+
+
+def add_play_bucket(buckets, player_id, games, wins, season):
+    bucket = buckets.setdefault(
+        player_id,
+        {"games": 0, "wins": 0, "seasons": set()},
+    )
+    bucket["games"] += games
+    bucket["wins"] += wins
+    if season and games:
+        bucket["seasons"].add(season)
+
+
+def season_play_buckets(rows, by_name, played_index, lineup_splits=None):
+    lineup_splits = lineup_splits or {}
     buckets = {}
     for row in rows:
+        season = (row.get("season") or "").strip()
+        split = blended_name_split(row, by_name, played_index, lineup_splits)
+        if split:
+            for player_id, stats in split.items():
+                add_play_bucket(
+                    buckets,
+                    player_id,
+                    stats["games"],
+                    stats["wins"],
+                    season,
+                )
+            continue
         player_id = attribute_stat_player_id(row, by_name, played_index)
         if not player_id:
             continue
-        bucket = buckets.setdefault(
+        add_play_bucket(
+            buckets,
             player_id,
-            {"games": 0, "wins": 0, "seasons": set()},
+            stat_count(row.get("season_games")),
+            stat_count(row.get("season_wins")),
+            season,
         )
-        bucket["games"] += stat_count(row.get("season_games"))
-        bucket["wins"] += stat_count(row.get("season_wins"))
-        season = (row.get("season") or "").strip()
-        if season:
-            bucket["seasons"].add(season)
     return buckets
 
 
@@ -1958,7 +2108,13 @@ def load_member_stats():
     by_id, by_name = load_player_directory()
     played_index = load_played_ids_by_name_season()
     season_rows = fetch_stats_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
-    buckets = season_play_buckets(season_rows, by_name, played_index)
+    lineup_splits = shared_name_lineup_splits(season_rows, by_name)
+    buckets = season_play_buckets(
+        season_rows,
+        by_name,
+        played_index,
+        lineup_splits,
+    )
     listed = set()
     players = []
 
@@ -2081,10 +2237,30 @@ def player_season_sort_key(row):
     return (guest_key, team.lower(), (row.get("player") or "").lower())
 
 
+def season_stat_entry(row, player_id, by_id, games, wins, win_rate):
+    season = (row.get("season") or "").strip()
+    team = (row.get("season_team") or "").strip()
+    name = (row.get("player") or "").strip() or "—"
+    player = by_id.get(player_id) or {}
+    return {
+        "season": season,
+        "player": name,
+        "player_id": player_id,
+        "player_note": player.get("comments") or "",
+        "season_team": team or "—",
+        "team_class": team_badge_class(team),
+        "season_games": games,
+        "season_wins": wins,
+        "win_rate": win_rate,
+        "comments": (row.get("comments") or "").strip(),
+    }
+
+
 def load_player_season_stats():
     rows = fetch_stats_rows("player_stats_by_season", PLAYER_SEASON_COLUMNS)
     by_id, by_name = load_player_directory()
     played_index = load_played_ids_by_name_season()
+    lineup_splits = shared_name_lineup_splits(rows, by_name)
     players = []
     seasons = set()
 
@@ -2092,22 +2268,27 @@ def load_player_season_stats():
         season = (row.get("season") or "").strip()
         if season:
             seasons.add(season)
-        team = (row.get("season_team") or "").strip()
-        name = (row.get("player") or "").strip() or "—"
+        split = blended_name_split(row, by_name, played_index, lineup_splits)
+        if split:
+            for player_id, stats in split.items():
+                players.append(season_stat_entry(
+                    row,
+                    player_id,
+                    by_id,
+                    stats["games"],
+                    stats["wins"],
+                    counted_win_rate(stats["wins"], stats["games"]),
+                ))
+            continue
         player_id = attribute_stat_player_id(row, by_name, played_index)
-        player = by_id.get(player_id) or {}
-        players.append({
-            "season": season,
-            "player": name,
-            "player_id": player_id,
-            "player_note": player.get("comments") or "",
-            "season_team": team or "—",
-            "team_class": team_badge_class(team),
-            "season_games": stat_count(row.get("season_games")),
-            "season_wins": stat_count(row.get("season_wins")),
-            "win_rate": format_win_rate(row.get("season_win_rates")),
-            "comments": (row.get("comments") or "").strip(),
-        })
+        players.append(season_stat_entry(
+            row,
+            player_id,
+            by_id,
+            stat_count(row.get("season_games")),
+            stat_count(row.get("season_wins")),
+            format_win_rate(row.get("season_win_rates")),
+        ))
 
     season_list = sorted(seasons, key=lambda label: season_sort_key({"season": label}))
     players.sort(key=lambda row: (*season_sort_key(row), *player_season_sort_key(row)))
