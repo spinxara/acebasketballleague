@@ -4,9 +4,14 @@
 
 {% block content %}
   <section class="card">
-    <h2>Players</h2>
-    <p class="lead">Manage league members and non-members in the players table.</p>
-    <p class="note">Set a player inactive instead of deleting. Season team assignment and mid-season trades stay on Roster.</p>
+    <div class="seasons-list-head">
+      <div>
+        <h2>Players</h2>
+        <p class="lead">Manage league members and non-members in the players table.</p>
+        <p class="note">Set a player inactive instead of deleting. Season team assignment and mid-season trades stay on Roster.</p>
+      </div>
+      <button class="login-submit seasons-add-btn" type="button" id="add-player">Add Player</button>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -17,49 +22,6 @@
         </ul>
       {% endif %}
     {% endwith %}
-
-    <form
-      class="upload-form players-form"
-      method="post"
-      action="{{ url_for('admin_players', status=status) }}"
-    >
-      <label for="display_name">Display name</label>
-      <input
-        id="display_name"
-        name="display_name"
-        type="text"
-        maxlength="120"
-        required
-        autocomplete="off"
-        placeholder="Full name as shown on stats"
-      />
-
-      <label for="comments">Comments (optional)</label>
-      <input
-        id="comments"
-        name="comments"
-        type="text"
-        maxlength="280"
-        placeholder="Notes for captains"
-      />
-
-      <div class="players-checks">
-        <label class="players-check">
-          <input type="checkbox" name="active" value="on" checked />
-          Active
-        </label>
-        <label class="players-check">
-          <input type="checkbox" name="non_member" value="on" />
-          Non-member
-        </label>
-      </div>
-
-      <button class="login-submit" type="submit">Add player</button>
-    </form>
-  </section>
-
-  <section class="card">
-    <h3>Player list</h3>
 
     <nav class="players-filters" aria-label="Filter players">
       {% for filter_id in status_filters %}
@@ -156,4 +118,84 @@
       </form>
     {% endif %}
   </section>
+
+  <dialog class="season-layer" id="player-layer" aria-labelledby="player-layer-title">
+    <header class="season-layer-header">
+      <h3 id="player-layer-title">Add a player</h3>
+    </header>
+
+    <div class="season-layer-body">
+      <form
+        id="player-form"
+        class="upload-form players-form"
+        method="post"
+        action="{{ url_for('admin_players', status=status) }}"
+      >
+        <label for="display_name">Display name</label>
+        <input
+          id="display_name"
+          name="display_name"
+          type="text"
+          maxlength="120"
+          required
+          autocomplete="off"
+          placeholder="Full name as shown on stats"
+        />
+
+        <label for="comments">Comments (optional)</label>
+        <input
+          id="comments"
+          name="comments"
+          type="text"
+          maxlength="280"
+          placeholder="Notes for captains"
+        />
+
+        <div class="players-checks">
+          <label class="players-check">
+            <input type="checkbox" name="active" value="on" checked />
+            Active
+          </label>
+          <label class="players-check">
+            <input type="checkbox" name="non_member" value="on" />
+            Non-member
+          </label>
+        </div>
+      </form>
+    </div>
+
+    <footer class="season-layer-footer">
+      <button class="season-layer-close" type="button" id="close-player-layer">Close</button>
+      <button class="login-submit" type="submit" form="player-form">Add player</button>
+    </footer>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      var layer = document.getElementById("player-layer");
+      var form = document.getElementById("player-form");
+      var addButton = document.getElementById("add-player");
+      var closeButton = document.getElementById("close-player-layer");
+      var displayName = document.getElementById("display_name");
+
+      if (!layer || !form || !addButton || !closeButton) return;
+
+      function closeLayer() {
+        if (layer.open) layer.close();
+      }
+
+      addButton.addEventListener("click", function () {
+        layer.showModal();
+        form.reset();
+        if (displayName) displayName.focus();
+      });
+
+      closeButton.addEventListener("click", closeLayer);
+      layer.addEventListener("click", function (event) {
+        if (event.target === layer) closeLayer();
+      });
+    })();
+  </script>
 {% endblock %}

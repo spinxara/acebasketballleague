@@ -45,16 +45,23 @@
 
   {% if season %}
     <section class="card">
-      <h3>{{ season }} roster</h3>
+      <div class="seasons-list-head">
+        <div>
+          <h3>{{ season }} roster</h3>
+          {% if load_error %}
+            <p class="error-note">Could not load roster. {{ load_error }}</p>
+          {% elif member_count == 0 %}
+            <p class="note">
+              No roster yet — complete Draft Room Save to roster, or add a player.
+            </p>
+          {% else %}
+            <p class="note">{{ member_count }} player{% if member_count != 1 %}s{% endif %} on this season.</p>
+          {% endif %}
+        </div>
+        <button class="login-submit seasons-add-btn" type="button" id="add-roster-player">Add a Player</button>
+      </div>
 
-      {% if load_error %}
-        <p class="error-note">Could not load roster. {{ load_error }}</p>
-      {% elif member_count == 0 %}
-        <p class="note">
-          No roster yet — complete Draft Room Save to roster, or add players below.
-        </p>
-      {% else %}
-        <p class="note">{{ member_count }} player{% if member_count != 1 %}s{% endif %} on this season.</p>
+      {% if not load_error and member_count %}
         <div class="roster-teams-grid">
           {% for team_name, team_members in roster_groups %}
             <div class="roster-team-card">
@@ -114,43 +121,55 @@
       {% endif %}
     </section>
 
-    <section class="card">
-      <h3>Add player</h3>
-      <p class="note">Pick someone from the Players list who is not already on this season.</p>
-      {% if available_players %}
-        <form
-          class="upload-form roster-add-form"
-          method="post"
-          action="{{ url_for('admin_roster_add') }}"
-        >
-          <input type="hidden" name="season" value="{{ season }}" />
-          <div class="seasons-label-row">
-            <div>
-              <label for="player_id">Player</label>
-              <select id="player_id" name="player_id" required>
-                <option value="">Select a player</option>
-                {% for player in available_players %}
-                  <option value="{{ player.id }}">
-                    {{ player.display_name }}{% if player.non_member %} (NM){% endif %}{% if not player.active %} · inactive{% endif %}
-                  </option>
-                {% endfor %}
-              </select>
+    <dialog class="season-layer" id="roster-add-layer" aria-labelledby="roster-add-layer-title">
+      <header class="season-layer-header">
+        <h3 id="roster-add-layer-title">Add a player</h3>
+      </header>
+
+      <div class="season-layer-body">
+        <p class="note">Pick someone from the Players list who is not already on this season.</p>
+        {% if available_players %}
+          <form
+            id="roster-add-form"
+            class="upload-form roster-add-form"
+            method="post"
+            action="{{ url_for('admin_roster_add') }}"
+          >
+            <input type="hidden" name="season" value="{{ season }}" />
+            <div class="seasons-label-row">
+              <div>
+                <label for="player_id">Player</label>
+                <select id="player_id" name="player_id" required>
+                  <option value="">Select a player</option>
+                  {% for player in available_players %}
+                    <option value="{{ player.id }}">
+                      {{ player.display_name }}{% if player.non_member %} (NM){% endif %}{% if not player.active %} · inactive{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="add_season_team">Team</label>
+                <select id="add_season_team" name="season_team" required>
+                  {% for option in team_names %}
+                    <option value="{{ option }}">{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
-            <div>
-              <label for="add_season_team">Team</label>
-              <select id="add_season_team" name="season_team" required>
-                {% for option in team_names %}
-                  <option value="{{ option }}">{{ option }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          <button class="login-submit" type="submit">Add to roster</button>
-        </form>
-      {% else %}
-        <p class="note">Every player is already on this season roster, or no players are loaded.</p>
-      {% endif %}
-    </section>
+          </form>
+        {% else %}
+          <p class="note">Every player is already on this season roster, or no players are loaded.</p>
+        {% endif %}
+      </div>
+
+      <footer class="season-layer-footer">
+        <button class="season-layer-close" type="button" id="close-roster-add-layer">Close</button>
+        {% if available_players %}
+          <button class="login-submit" type="submit" form="roster-add-form">Add to roster</button>
+        {% endif %}
+      </footer>
+    </dialog>
 
     <section class="card">
       <h3>Clear season roster</h3>
@@ -227,6 +246,31 @@
           setOpen(false);
         });
       }
+    })();
+
+    (function () {
+      var layer = document.getElementById("roster-add-layer");
+      var form = document.getElementById("roster-add-form");
+      var addButton = document.getElementById("add-roster-player");
+      var closeButton = document.getElementById("close-roster-add-layer");
+      var playerSelect = document.getElementById("player_id");
+
+      if (!layer || !addButton || !closeButton) return;
+
+      function closeLayer() {
+        if (layer.open) layer.close();
+      }
+
+      addButton.addEventListener("click", function () {
+        layer.showModal();
+        if (form) form.reset();
+        if (playerSelect) playerSelect.focus();
+      });
+
+      closeButton.addEventListener("click", closeLayer);
+      layer.addEventListener("click", function (event) {
+        if (event.target === layer) closeLayer();
+      });
     })();
   </script>
 {% endblock %}

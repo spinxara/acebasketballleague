@@ -12,15 +12,14 @@
       when someone plays off their roster team. Add a walk-up on Players first.
     </p>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class="form-messages">
-          {% for category, message in messages %}
-            <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+    {% set flash_messages = get_flashed_messages(with_categories=true) %}
+    {% if flash_messages %}
+      <ul class="form-messages">
+        {% for category, message in flash_messages %}
+          <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
 
     {% if load_error %}
       <p class="error-note">Could not load games. {{ load_error }}</p>
@@ -44,59 +43,30 @@
 
   {% if season and not load_error %}
     <section class="card">
-      <h3>{{ season }}</h3>
-      {% if not roster_players %}
-        <p class="note">
-          No roster players with a player id for this season.
-          Save a roster, or add players on the Players page, before entering games.
-        </p>
-      {% else %}
-        <form id="sunday-form" method="post" action="{{ url_for('admin_games') }}">
-          <input type="hidden" name="season" value="{{ season }}" />
-          <input type="hidden" name="payload" id="games-payload" value="" />
-
-          <div class="upload-form games-setup">
-            <div>
-              <label for="game-date">Date</label>
-              <input id="game-date" name="date" type="date" required value="{{ game_date }}" />
-            </div>
-          </div>
-
-          <div class="games-first">
-            <div>
-              <label for="first-away">Game 1 away</label>
-              <select id="first-away">
-                {% for team in team_names %}
-                  <option value="{{ team }}" {% if team == "KCN" %}selected{% endif %}>{{ team }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div>
-              <label for="first-home">Game 1 home</label>
-              <select id="first-home">
-                {% for team in team_names %}
-                  <option value="{{ team }}" {% if team == "BK" %}selected{% endif %}>{{ team }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          <p class="note">The team that sits out game 1 is away next, and that game’s away team is home next. Games 4–6 repeat 1–3. Changing game 1 resets lineups, winners, and YouTube links.</p>
-
-          <div id="game-cards" class="games-list"></div>
-
-          <p id="games-form-error" class="error-note" hidden></p>
-          <button class="login-submit" type="submit">Save Sunday</button>
-        </form>
-      {% endif %}
-    </section>
-
-    <section class="card">
-      <h3>Recent Sundays</h3>
+      <div class="seasons-list-head">
+        <div>
+          <h3>Recent Sundays</h3>
+          {% if not roster_players %}
+            <p class="note">
+              No roster players with a player id for this season.
+              Save a roster, or add players on the Players page, before entering games.
+            </p>
+          {% endif %}
+        </div>
+        {% if roster_players %}
+          <button class="login-submit seasons-add-btn" type="button" id="add-sunday">Add a Sunday</button>
+        {% endif %}
+      </div>
       {% if not recent_sundays %}
         <p class="note">No games saved for this season yet.</p>
       {% else %}
         {% for sunday in recent_sundays %}
-          <h4 class="games-sunday-date">{{ sunday.date }}</h4>
+          <div class="games-sunday-head">
+            <h4 class="games-sunday-date">{{ sunday.date }}</h4>
+            {% if sunday.editable %}
+              <button class="season-edit-btn" type="button" data-edit-sunday="{{ sunday.date }}">Edit</button>
+            {% endif %}
+          </div>
           <div class="table-wrap">
             <table class="stats-table">
               <thead>
@@ -140,6 +110,66 @@
         {% endfor %}
       {% endif %}
     </section>
+
+    {% if roster_players %}
+      <dialog class="season-layer" id="sunday-layer" aria-labelledby="sunday-layer-title">
+        <header class="season-layer-header">
+          <h3 id="sunday-layer-title">Add a Sunday</h3>
+        </header>
+
+        <div class="season-layer-body">
+          {% if flash_messages and initial_payload %}
+            <ul class="form-messages">
+              {% for category, message in flash_messages %}
+                <li class="{{ 'form-success' if category == 'success' else 'form-errors' }}">{{ message }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          <form id="sunday-form" method="post" action="{{ url_for('admin_games') }}">
+            <input type="hidden" name="season" value="{{ season }}" />
+            <input type="hidden" name="original_date" id="original-date" value="{{ original_date }}" />
+            <input type="hidden" name="payload" id="games-payload" value="" />
+
+            <div class="upload-form games-setup">
+              <div>
+                <label for="game-date">Date</label>
+                <input id="game-date" name="date" type="date" required value="{{ game_date }}" />
+              </div>
+            </div>
+
+            <div class="games-first">
+              <div>
+                <label for="first-away">Game 1 away</label>
+                <select id="first-away">
+                  {% for team in team_names %}
+                    <option value="{{ team }}" {% if team == "KCN" %}selected{% endif %}>{{ team }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="first-home">Game 1 home</label>
+                <select id="first-home">
+                  {% for team in team_names %}
+                    <option value="{{ team }}" {% if team == "BK" %}selected{% endif %}>{{ team }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <p class="note">The team that sits out game 1 is away next, and that game’s away team is home next. Games 4–6 repeat 1–3. Changing game 1 resets lineups, winners, and YouTube links.</p>
+
+            <div id="game-cards" class="games-list"></div>
+
+            <p id="games-form-error" class="error-note" hidden></p>
+          </form>
+        </div>
+
+        <footer class="season-layer-footer">
+          <button class="season-layer-close" type="button" id="close-sunday-layer">Close</button>
+          <button class="login-submit" type="submit" form="sunday-form" id="save-sunday">Save Sunday</button>
+        </footer>
+      </dialog>
+    {% endif %}
   {% endif %}
 {% endblock %}
 
@@ -165,7 +195,9 @@
       "teams": team_names,
       "roster": roster_players,
       "guests": guest_players,
-      "initialPayload": initial_payload
+      "initialPayload": initial_payload,
+      "sundays": edit_sundays,
+      "originalDate": original_date
     } | tojson }}</script>
     <script>
       (function () {
@@ -176,7 +208,25 @@
         var awaySelect = document.getElementById("first-away");
         var homeSelect = document.getElementById("first-home");
         var errorNode = document.getElementById("games-form-error");
+        var layer = document.getElementById("sunday-layer");
+        var addButton = document.getElementById("add-sunday");
+        var closeButton = document.getElementById("close-sunday-layer");
+        var dateInput = document.getElementById("game-date");
         if (!config || !form || !cards || !awaySelect || !homeSelect) return;
+
+        function closeLayer() {
+          if (layer && layer.open) layer.close();
+        }
+
+        if (layer && addButton) {
+          addButton.addEventListener("click", openAdd);
+        }
+        if (layer && closeButton) {
+          closeButton.addEventListener("click", closeLayer);
+          layer.addEventListener("click", function (event) {
+            if (event.target === layer) closeLayer();
+          });
+        }
 
         var teams = config.teams || ["NPS", "KCN", "BK"];
         var roster = config.roster || [];
@@ -538,9 +588,57 @@
           showError("");
         });
 
+        function setSundayMode(editing) {
+          var title = document.getElementById("sunday-layer-title");
+          var saveButton = document.getElementById("save-sunday");
+          var originalDate = document.getElementById("original-date");
+          if (title) {
+            title.textContent = editing && originalDate
+              ? "Edit " + originalDate.value
+              : "Add a Sunday";
+          }
+          if (saveButton) saveButton.textContent = editing ? "Save changes" : "Save Sunday";
+        }
+
+        function openAdd() {
+          form.reset();
+          var originalDate = document.getElementById("original-date");
+          if (originalDate) originalDate.value = "";
+          setSundayMode(false);
+          initLineups();
+          showError("");
+          render();
+          if (layer) layer.showModal();
+          if (dateInput) dateInput.focus();
+        }
+
+        function openEdit(day) {
+          var payload = (config.sundays || {})[day];
+          var originalDate = document.getElementById("original-date");
+          if (!payload || !layer || !originalDate) return;
+          originalDate.value = day;
+          if (dateInput) dateInput.value = day;
+          setSundayMode(true);
+          restorePayload(payload);
+          showError("");
+          render();
+          layer.showModal();
+          if (dateInput) dateInput.focus();
+        }
+
+        document.querySelectorAll("[data-edit-sunday]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            openEdit(button.getAttribute("data-edit-sunday"));
+          });
+        });
+
         initLineups();
         restorePayload(config.initialPayload);
         render();
+        if (layer && config.initialPayload) {
+          if (config.originalDate) setSundayMode(true);
+          layer.showModal();
+        }
       })();
     </script>
   {% endif %}

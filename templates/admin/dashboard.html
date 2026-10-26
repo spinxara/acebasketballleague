@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard · ACE League Admin{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>Dashboard</h2>
+    <p class="lead">The current season and anything that still needs a decision.</p>
+    {% if load_error %}
+      <p class="error-note">Could not load the dashboard. {{ load_error }}</p>
+    {% endif %}
+  </section>
+
+  {% if not load_error %}
+    <section class="card">
+      <div class="dashboard-season-head">
+        <h3>Current season</h3>
+        {% if current %}
+          <span class="status-pill {{ current.status_class }}">{{ current.status_label or "—" }}</span>
+        {% endif %}
+      </div>
+      {% if not current %}
+        <p class="note">There is no current season.</p>
+      {% else %}
+        {% if upcoming %}
+          <p class="note">No season is active. This is the next planned season.</p>
+        {% endif %}
+        <p class="lead">{{ current.season }}</p>
+        <p class="note">{% if date_label %}{{ date_label }}{% else %}No dates set.{% endif %}</p>
+        <div class="dashboard-teams">
+          {% for row in team_counts %}
+            <div class="dashboard-team">
+              <span>{{ row.team }}</span>
+              <strong>{{ row.count }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="dashboard-actions">
+          <a class="dashboard-link" href="{{ url_for('admin_roster', season=current.season) }}">Roster</a>
+          <a class="dashboard-link" href="{{ url_for('admin_games', season=current.season) }}">Games</a>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>Needs attention</h3>
+      {% if not attention %}
+        <p class="note">Nothing needs attention.</p>
+      {% else %}
+        <ul class="dashboard-attention">
+          {% for item in attention %}
+            <li>
+              <span>{{ item.text }}</span>
+              <a class="dashboard-link" href="{{ item.href }}">{{ item.link }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

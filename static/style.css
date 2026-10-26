@@ -1823,7 +1823,8 @@ h3 {
   gap: 16px;
 }
 
-.seasons-list-head h2 {
+.seasons-list-head h2,
+.seasons-list-head h3 {
   margin-bottom: 8px;
 }
 
@@ -2054,6 +2055,85 @@ h3 {
   color: var(--admin-muted);
   font-weight: normal;
   font-size: 13px;
+}
+
+.dashboard-season-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-season-head h3,
+.dashboard-attention {
+  margin-bottom: 0;
+}
+
+.dashboard-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.dashboard-team {
+  min-width: 88px;
+  padding: 10px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.dashboard-team span {
+  display: block;
+  color: var(--admin-muted);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.dashboard-team strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.dashboard-actions,
+.dashboard-attention {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-attention {
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-attention li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+a.dashboard-link {
+  display: inline-block;
+  padding: 8px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  color: var(--admin-text);
+  font-weight: bold;
+  text-decoration: none;
+}
+
+a.dashboard-link:hover {
+  border-color: var(--admin-accent);
+  color: var(--admin-accent);
 }
 
 .roster-member-list {
@@ -2954,9 +3034,21 @@ h3 {
   font-size: 13px;
 }
 
+.games-sunday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
 .games-sunday-date {
   margin: 18px 0 8px;
   font-size: 16px;
+}
+
+.games-sunday-head .games-sunday-date {
+  margin: 0;
 }
 
 .games-video-row,

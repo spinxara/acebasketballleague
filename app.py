@@ -2940,17 +2940,110 @@ def admin_draft():
     )
 
 
+def pick_dashboard_season(seasons):
+    for status in ("active", "planned"):
+        for row in seasons:
+            if (row.get("status") or "").strip().lower() == status and row.get("season"):
+                return row
+    return None
+
+
+def dashboard_date_label(row):
+    start = format_record_date(row.get("season_start_date"))
+    end = format_record_date(row.get("season_end_date"))
+    if start and end:
+        return f"{start} – {end}"
+    return start or end or ""
+
+
+def dashboard_team_counts(members):
+    counts = []
+    for team, rows in group_roster_by_team(members):
+        if team in TEAM_NAMES or rows:
+            counts.append({"team": team, "count": len(rows)})
+    return counts
+
+
+def season_has_any_games(season):
+    encoded = urllib.parse.quote(str(season), safe="")
+    payload = supabase_request(
+        f"game_results?select=id&season=eq.{encoded}&limit=1"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    return len(rows) > 0
+
+
+def dashboard_attention(seasons, current, member_count):
+    items = []
+    if not current:
+        items.append({
+            "text": "No active or planned season.",
+            "href": url_for("admin_seasons"),
+            "link": "Open seasons",
+        })
+    else:
+        label = current["season"]
+        if member_count == 0:
+            items.append({
+                "text": f"{label} has no roster.",
+                "href": url_for("admin_roster", season=label),
+                "link": "Open roster",
+            })
+        elif not season_has_any_games(label):
+            items.append({
+                "text": f"{label} has a roster but no saved games.",
+                "href": url_for("admin_games", season=label),
+                "link": "Open games",
+            })
+
+    seasons_href = url_for("admin_seasons", status="completed")
+    for row in seasons:
+        if (row.get("status") or "").strip().lower() != "completed":
+            continue
+        if (row.get("season_winner") or "").strip():
+            continue
+        items.append({
+            "text": f"{row['season']} is completed and has no season winner.",
+            "href": seasons_href,
+            "link": "Open completed seasons",
+        })
+    return items
+
+
 @app.route("/admin")
 def admin_dashboard():
+    load_error = None
+    current = None
+    team_counts = []
+    attention = []
+    date_label = ""
+    try:
+        seasons = load_season_records()
+        current = pick_dashboard_season(seasons)
+        member_count = 0
+        if current:
+            members = load_team_members(current["season"])
+            team_counts = dashboard_team_counts(members)
+            member_count = len(members)
+            date_label = dashboard_date_label(current)
+        attention = dashboard_attention(seasons, current, member_count)
+    except RuntimeError as exc:
+        load_error = str(exc)
+        current = None
+        team_counts = []
+        attention = []
+
     return render_template(
-        "admin/in_progress.html",
+        "admin/dashboard.html",
         active="dashboard",
-        page_title="Dashboard",
-        page_summary="Overview of what captains and admins will manage for each season.",
-        future_job=(
-            "Season status, recent unsynced work, and shortcuts to roster, "
-            "games, and tournament entry."
-        ),
+        load_error=load_error,
+        current=current,
+        upcoming=bool(current and current.get("status") == "planned"),
+        date_label=date_label,
+        team_counts=team_counts,
+        attention=attention,
     )
 
 
@@ -3243,13 +3336,25 @@ def admin_roster():
     except RuntimeError as exc:
         load_error = str(exc)
 
+    roster_groups = group_roster_by_team(members)
+    selected_season = next(
+        (row for row in seasons if row.get("season") == season),
+        None,
+    )
+    if selected_season and selected_season.get("status") == "completed":
+        roster_groups = [
+            (team, team_members)
+            for team, team_members in roster_groups
+            if team_members
+        ]
+
     return render_template(
         "admin/roster.html",
         active="roster",
         seasons=seasons,
         season=season,
         members=members,
-        roster_groups=group_roster_by_team(members),
+        roster_groups=roster_groups,
         team_names=TEAM_NAMES,
         available_players=available_players,
         load_error=load_error,
@@ -3562,17 +3667,110 @@ def group_recent_sundays(rows, limit=RECENT_SUNDAY_LIMIT):
     return sundays
 
 
-def games_exist_for_date(season, day):
+def sunday_results_filter(season, day):
     encoded_season = urllib.parse.quote(str(season), safe="")
     start = urllib.parse.quote(f"{day}T00:00:00+00:00", safe="")
     next_day = (datetime.strptime(day, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
     end = urllib.parse.quote(f"{next_day}T00:00:00+00:00", safe="")
+    return f"season=eq.{encoded_season}&date=gte.{start}&date=lt.{end}"
+
+
+def games_exist_for_date(season, day):
     payload = supabase_request(
-        "game_results?select=id"
-        f"&season=eq.{encoded_season}&date=gte.{start}&date=lt.{end}&limit=1"
+        "game_results?select=id&" + sunday_results_filter(season, day) + "&limit=1"
     )
     rows = parse_supabase_json(payload, empty=[])
     return isinstance(rows, list) and len(rows) > 0
+
+
+def load_sunday_game_rows(season, day):
+    payload = supabase_request(
+        "game_results?select=id,game_number&"
+        + sunday_results_filter(season, day)
+        + "&order=game_number.asc"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    return rows
+
+
+def sunday_matchups_editable(games):
+    ordered = sorted(games, key=lambda game: game["game_number"])
+    if [game["game_number"] for game in ordered] != [1, 2, 3, 4, 5, 6]:
+        return False
+    away = (ordered[0]["away_team"] or "").strip().upper()
+    home = (ordered[0]["home_team"] or "").strip().upper()
+    try:
+        expected = sunday_rotation_from_first(away, home)
+    except ValueError:
+        return False
+    actual = tuple(
+        ((game["away_team"] or "").strip().upper(), (game["home_team"] or "").strip().upper())
+        for game in ordered
+    )
+    return actual == expected
+
+
+def load_lineups_by_game(game_ids):
+    ids = []
+    for game_id in game_ids:
+        try:
+            ids.append(str(int(game_id)))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return {}
+    payload = supabase_request(
+        "player_played_games?select=game_id,player_id,playing_team"
+        f"&game_id=in.({','.join(ids)})"
+    )
+    rows = parse_supabase_json(payload, empty=[])
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected Supabase response.")
+    grouped = {}
+    for row in rows:
+        try:
+            game_id = int(row.get("game_id"))
+        except (TypeError, ValueError):
+            continue
+        player_id = canonical_player_id(row.get("player_id"))
+        team = str(row.get("playing_team") or "").strip().upper()
+        if not player_id or not team:
+            continue
+        grouped.setdefault(game_id, []).append({
+            "player_id": player_id,
+            "playing_team": team,
+        })
+    return grouped
+
+
+def editable_sunday_payloads(sundays):
+    game_ids = []
+    for sunday in sundays:
+        sunday["editable"] = sunday_matchups_editable(sunday["games"])
+        if sunday["editable"]:
+            game_ids.extend(game["id"] for game in sunday["games"] if game.get("id") is not None)
+    lineups = load_lineups_by_game(game_ids)
+    payloads = {}
+    for sunday in sundays:
+        if not sunday["editable"]:
+            continue
+        games = []
+        for game in sorted(sunday["games"], key=lambda item: item["game_number"]):
+            try:
+                game_id = int(game["id"])
+            except (TypeError, ValueError):
+                game_id = None
+            games.append({
+                "away_team": game["away_team"],
+                "home_team": game["home_team"],
+                "winner_team": game["winner_team"],
+                "youtube_url": game["youtube_url"],
+                "players": lineups.get(game_id, []),
+            })
+        payloads[sunday["date"]] = {"games": games}
+    return payloads
 
 
 def parse_sunday_games_form(form, players_by_id, roster_team_by_id):
@@ -3729,6 +3927,55 @@ def update_game_youtube(season, game_id, youtube_url):
     raise ValueError("That game is not in this season.")
 
 
+def played_game_rows(games, created_at=None):
+    player_rows = []
+    for game in games:
+        for player in game["lineup"]:
+            player_row = {
+                "name": player["name"],
+                "playing_team": player["playing_team"],
+                "season": player["season"],
+                "game_id": game["id"],
+                "guest": player["guest"],
+                "player_id": player["player_id"],
+            }
+            if created_at:
+                player_row["created_at"] = created_at
+            player_rows.append(player_row)
+    return player_rows
+
+
+def insert_played_game_rows(player_rows, created_at=None):
+    if not player_rows:
+        return created_at
+    try:
+        insert_supabase_rows("player_played_games", player_rows)
+    except RuntimeError as exc:
+        if created_at or not created_at_missing(exc):
+            raise
+        created_at = utc_now_iso()
+        for player_row in player_rows:
+            player_row["created_at"] = created_at
+        insert_supabase_rows("player_played_games", player_rows)
+    return created_at
+
+
+def delete_played_games(game_ids):
+    ids = []
+    for game_id in game_ids:
+        try:
+            ids.append(str(int(game_id)))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return
+    supabase_request(
+        f"player_played_games?game_id=in.({','.join(ids)})",
+        method="DELETE",
+        extra_headers={"Prefer": "return=minimal"},
+    )
+
+
 def save_sunday_games(games):
     created_at = None
     inserted_ids = []
@@ -3747,32 +3994,49 @@ def save_sunday_games(games):
             game["id"] = game_id
             inserted_ids.append(game_id)
 
-        player_rows = []
-        for game in games:
-            for player in game["lineup"]:
-                player_row = {
-                    "name": player["name"],
-                    "playing_team": player["playing_team"],
-                    "season": player["season"],
-                    "game_id": game["id"],
-                    "guest": player["guest"],
-                    "player_id": player["player_id"],
-                }
-                if created_at:
-                    player_row["created_at"] = created_at
-                player_rows.append(player_row)
-        try:
-            insert_supabase_rows("player_played_games", player_rows)
-        except RuntimeError as exc:
-            if created_at or not created_at_missing(exc):
-                raise
-            created_at = utc_now_iso()
-            for player_row in player_rows:
-                player_row["created_at"] = created_at
-            insert_supabase_rows("player_played_games", player_rows)
+        player_rows = played_game_rows(games, created_at)
+        insert_played_game_rows(player_rows, created_at)
     except Exception:
         delete_sunday_games(inserted_ids)
         raise
+
+    refresh_error = None
+    try:
+        call_supabase_rpc("refresh_all_stats")
+    except RuntimeError as exc:
+        refresh_error = exc
+    return len(player_rows), refresh_error
+
+
+def replace_sunday_games(existing_rows, games):
+    by_number = {}
+    for row in existing_rows:
+        by_number[stat_count(row.get("game_number"))] = row
+    if sorted(by_number) != [1, 2, 3, 4, 5, 6]:
+        raise ValueError("That Sunday could not be found.")
+
+    for game in games:
+        current = by_number[game["game_number"]]
+        game_id = current.get("id")
+        if game_id is None:
+            raise ValueError("That Sunday could not be found.")
+        update_supabase_row(
+            "game_results",
+            game_id,
+            {
+                "away_team": game["away_team"],
+                "home_team": game["home_team"],
+                "winner_team": game["winner_team"],
+                "youtube_url": game.get("youtube_url"),
+                "date": game["date"],
+                "season": game["season"],
+            },
+        )
+        game["id"] = game_id
+
+    delete_played_games(game["id"] for game in games)
+    player_rows = played_game_rows(games)
+    insert_played_game_rows(player_rows)
 
     refresh_error = None
     try:
@@ -3813,11 +4077,13 @@ def load_games_page(season, day):
     roster = []
     guests = []
     recent = []
+    edit_sundays = {}
     if season:
         members = load_team_members(season)
         players = load_players()
         roster, guests, _by_id, _roster_teams = games_roster_and_guests(members, players)
         recent = group_recent_sundays(load_season_game_results(season))
+        edit_sundays = editable_sunday_payloads(recent)
     return {
         "seasons": seasons,
         "season": season,
@@ -3825,10 +4091,11 @@ def load_games_page(season, day):
         "roster": roster,
         "guests": guests,
         "recent_sundays": recent,
+        "edit_sundays": edit_sundays,
     }
 
 
-def render_games_page(season, day, posted_payload=None, load_error=None):
+def render_games_page(season, day, posted_payload=None, load_error=None, original_date=""):
     page = {
         "seasons": [],
         "season": season or "",
@@ -3836,6 +4103,7 @@ def render_games_page(season, day, posted_payload=None, load_error=None):
         "roster": [],
         "guests": [],
         "recent_sundays": [],
+        "edit_sundays": {},
     }
     if load_error is None:
         try:
@@ -3861,9 +4129,11 @@ def render_games_page(season, day, posted_payload=None, load_error=None):
         roster_players=page["roster"],
         guest_players=page["guests"],
         recent_sundays=page["recent_sundays"],
+        edit_sundays=page.get("edit_sundays") or {},
         team_names=TEAM_NAMES,
         load_error=load_error,
         initial_payload=initial_payload,
+        original_date=original_date or "",
     )
 
 
@@ -3894,8 +4164,14 @@ def admin_games():
     if request.method == "POST":
         season = (request.form.get("season") or "").strip()
         day = (request.form.get("date") or "").strip()
+        original_day = (request.form.get("original_date") or "").strip()
         posted_payload = request.form.get("payload") or ""
         try:
+            if original_day:
+                try:
+                    datetime.strptime(original_day, "%Y-%m-%d")
+                except ValueError as exc:
+                    raise ValueError("Choose a valid game date.") from exc
             seasons = load_season_records()
             if season not in {row["season"] for row in seasons}:
                 raise ValueError("That season is not in the seasons list.")
@@ -3907,20 +4183,33 @@ def admin_games():
             season, day, games = parse_sunday_games_form(
                 request.form, players_by_id, roster_team_by_id
             )
-            if games_exist_for_date(season, day):
-                raise ValueError(
-                    f"Games for {season} on {day} are already saved."
-                )
-            player_count, refresh_error = save_sunday_games(games)
+            if original_day:
+                existing = load_sunday_game_rows(season, original_day)
+                if original_day != day and games_exist_for_date(season, day):
+                    raise ValueError(
+                        f"Games for {season} on {day} are already saved."
+                    )
+                player_count, refresh_error = replace_sunday_games(existing, games)
+            else:
+                if games_exist_for_date(season, day):
+                    raise ValueError(
+                        f"Games for {season} on {day} are already saved."
+                    )
+                player_count, refresh_error = save_sunday_games(games)
         except ValueError as exc:
             flash(str(exc), "error")
-            return render_games_page(season, day, posted_payload)
+            return render_games_page(
+                season, day, posted_payload, original_date=original_day
+            )
         except RuntimeError as exc:
             flash(games_form_error_message(exc), "error")
-            return render_games_page(season, day, posted_payload)
+            return render_games_page(
+                season, day, posted_payload, original_date=original_day
+            )
 
+        verb = "Updated" if original_day else "Saved"
         flash(
-            f"Saved {day}: 6 games, {player_count} played-game rows.",
+            f"{verb} {day}: 6 games, {player_count} played-game rows.",
             "success",
         )
         if refresh_error:
