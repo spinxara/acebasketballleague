@@ -13,9 +13,9 @@ Live site: https://acebasketballteam.com
 - Marketing landings at `/` (English) and `/ko` (Korean): hero, when/where, season overview, and contact. Logo in the header returns to `/`.
 - Guidebook hub at `/home` (nav label Home): rules, what’s included, social links, and sponsor logos.
 - About page with the Sunday schedule, Glendale court, and a Korean introduction that links to `/ko`.
-- Top navigation: Home (`/home`), About, Stats, and Moments. Stats opens Season Results, Member Stats, Player Stats by Season, and Team Matchups. Those pages also show a section bar for the same links.
-- Season results, member stats, player stats by season, and team matchups (loaded from Supabase). Season Results lists each season and links to `/season/Jul-Sep-2026`. On a phone, the whole season card opens that page. Team codes use the same color pills as the rest of the site.
-- Each season page shows the roster (full name and logo when a file exists), standings, awards, season photos, tournament matches, and game videos. The Final is listed above the Semi-Final. A game with a YouTube link shows a small YouTube mark next to Watch. Season photos are on this page, not on the Season Results list.
+- Top navigation: Home (`/home`), About, Stats, and Moments. Stats opens Seasons, Matchups, Player Stats, All-Time Seasons, and All-Time Players. Those pages also show a section bar for the same links.
+- Seasons (`/season`) opens the latest season page with a season dropdown. Matchups, player stats, all-time seasons, and all-time players load from Supabase. All-Time Seasons lists each season and links to `/season/Jul-Sep-2026`. On a phone, the whole season card opens that page. Team codes use the same color pills as the rest of the site.
+- Each season page shows the roster (full name and logo when a file exists), standings, awards, season photos, tournament matches, and game videos. The Final is listed above the Semi-Final. A game with a YouTube link shows a small YouTube mark next to Watch. Season photos are on this page, not on the All-Time Seasons list.
 - Team moments photo gallery, in the order saved from admin.
 - League game rules (version 3.1), linked from the home page and the footer.
 - Sponsor row on the home page and a "Supported by" line in the footer. Names, links, and logos live in `SPONSORS` in `app.py`.
@@ -164,7 +164,7 @@ Indexing usually takes days to a few weeks.
 
 ### Public pages
 
-Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Season Results, Member Stats, Player Stats by Season, and Team Matchups. Open a season from Season Results for that season’s roster, standings, awards, photos, tournament, and game videos. On a phone, tap the season card. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
+Open `/` for the English landing or `/ko` for Korean. Use Home (`/home`), About, Stats, and Moments in the top nav for the guidebook. Inside Stats, the section bar stays on Seasons, Matchups, Player Stats, All-Time Seasons, and All-Time Players. Open Seasons (or a season from All-Time Seasons) for that season’s roster, standings, awards, photos, tournament, and game videos. On a phone, tap the season card. Game rules are on `/home` and in the footer. Stats pages read from Supabase; member totals are refreshed via the `refresh_player_totals` RPC when that function exists.
 
 ### Sponsors
 

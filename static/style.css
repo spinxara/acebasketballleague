@@ -1702,6 +1702,10 @@ h3 {
   margin: 0 0 8px;
 }
 
+.season-nav-bar {
+  margin: 0 0 12px;
+}
+
 .season-roster,
 .season-awards {
   display: grid;

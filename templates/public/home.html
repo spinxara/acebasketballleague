@@ -74,20 +74,24 @@
           — Who we are, where we play, and how the Sunday league works.
         </li>
         <li>
-          <a href="{{ url_for('season_results') }}">Season Results</a>
-          — Season summaries, including champions, match results, and video recordings.
+          <a href="{{ url_for('season_current') }}">Seasons</a>
+          — Browse a season for roster, standings, awards, tournament, and game videos.
         </li>
         <li>
-          <a href="{{ url_for('member_stats') }}">All-Time Members</a>
-          — Career games, wins, and each player's current team.
+          <a href="{{ url_for('team_matchups') }}">Matchups</a>
+          — Head-to-head strength between teams each season.
         </li>
         <li>
-          <a href="{{ url_for('player_stats') }}">Player Stats by Season</a>
+          <a href="{{ url_for('player_stats') }}">Player Stats</a>
           — Per-season games, wins, and comments by team.
         </li>
         <li>
-          <a href="{{ url_for('team_matchups') }}">Team Matchups</a>
-          — Head-to-head strength between teams each season.
+          <a href="{{ url_for('season_results') }}">All-Time Seasons</a>
+          — Season summaries, including champions, match results, and video recordings.
+        </li>
+        <li>
+          <a href="{{ url_for('member_stats') }}">All-Time Players</a>
+          — Career games, wins, and each player's current team.
         </li>
         <li>
           <a href="{{ url_for('team_moments') }}">Team Moments</a>

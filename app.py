@@ -64,6 +64,7 @@ PUBLIC_SITEMAP_PATHS = (
     "/home",
     "/about",
     "/rules",
+    "/season",
     "/season-results",
     "/member-stats",
     "/player-stats",
@@ -92,10 +93,11 @@ PUBLIC_NAV = [
         "id": "stats",
         "label": "Stats",
         "children": [
-            {"id": "season-results", "label": "Season Results", "endpoint": "season_results"},
-            {"id": "member-stats", "label": "All-Time Members", "endpoint": "member_stats"},
-            {"id": "player-stats", "label": "Player Stats by Season", "endpoint": "player_stats"},
-            {"id": "team-matchups", "label": "Team Matchups", "endpoint": "team_matchups"},
+            {"id": "season", "label": "Seasons", "endpoint": "season_current"},
+            {"id": "team-matchups", "label": "Matchups", "endpoint": "team_matchups"},
+            {"id": "player-stats", "label": "Player Stats", "endpoint": "player_stats"},
+            {"id": "season-results", "label": "All-Time Seasons", "endpoint": "season_results"},
+            {"id": "member-stats", "label": "All-Time Players", "endpoint": "member_stats"},
         ],
     },
     {"id": "team-moments", "label": "Moments", "endpoint": "team_moments"},
@@ -2739,6 +2741,25 @@ def season_results():
     )
 
 
+@app.route("/season")
+def season_current():
+    to_slug = (request.args.get("to") or "").strip()
+    if to_slug:
+        label = season_label_from_slug(to_slug)
+        if label:
+            return redirect(url_for("season_record", slug=season_slug(label)))
+
+    try:
+        seasons = load_season_records()
+    except RuntimeError:
+        return redirect(url_for("season_results"))
+
+    label = current_season_label(seasons)
+    if not label:
+        return redirect(url_for("season_results"))
+    return redirect(url_for("season_record", slug=season_slug(label)))
+
+
 @app.route("/season/<slug>")
 def season_record(slug):
     label = season_label_from_slug(slug)
@@ -2747,10 +2768,12 @@ def season_record(slug):
 
     load_error = None
     season = None
+    seasons = []
     roster = []
     standings = []
     weeks = []
     matches = []
+    active_season = ""
     try:
         seasons = attach_season_photos(load_season_records())
         season = next((row for row in seasons if row["season"] == label), None)
@@ -2759,6 +2782,10 @@ def season_record(slug):
         season["start_label"] = format_record_date(season.get("season_start_date"))
         season["end_label"] = format_record_date(season.get("season_end_date"))
         season["tournament_date_label"] = format_record_date(season.get("tournament_date"))
+        active_season = next(
+            (row["season"] for row in seasons if row.get("status") == "active"),
+            "",
+        )
         roster = season_roster_sections(load_team_members(label))
         games = load_season_game_results(label)
         standings = season_standings(games)
@@ -2769,9 +2796,11 @@ def season_record(slug):
 
     return render_template(
         "public/season.html",
-        active="season-results",
+        active="season",
         season_label=label,
         season=season,
+        seasons=seasons,
+        active_season=active_season,
         roster=roster,
         standings=standings,
         weeks=weeks,

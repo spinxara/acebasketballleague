@@ -6,8 +6,25 @@
 {% block content %}
   <section class="card">
     <p class="note season-back">
-      <a class="table-link" href="{{ url_for('season_results') }}">Season Results</a>
+      <a class="table-link" href="{{ url_for('season_results') }}">All-Time Seasons</a>
     </p>
+    {% if seasons %}
+      <form class="filter-bar season-nav-bar" method="get" action="{{ url_for('season_current') }}">
+        <div class="filter-field">
+          <label for="season-nav">Season</label>
+          <select id="season-nav" name="to">
+            {% for row in seasons %}
+              <option value="{{ row.slug }}"{% if row.season == season_label %} selected{% endif %}>
+                {{ row.season }}{% if row.season == active_season %} (Active){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <noscript>
+          <button class="filter-submit" type="submit">Show</button>
+        </noscript>
+      </form>
+    {% endif %}
     <h1>{{ season_label }}</h1>
     {% if season %}
       <p class="lead">
@@ -280,4 +297,9 @@
 
 {% block scripts %}
   <script src="{{ url_for('static', filename='moments.js') }}" defer></script>
+  <script>
+    document.getElementById("season-nav")?.addEventListener("change", function () {
+      this.form.submit();
+    });
+  </script>
 {% endblock %}
