@@ -1,4 +1,5 @@
 import hmac
+import http.client
 import json
 import os
 import random
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 from io import BytesIO
 from threading import Lock
+from time import sleep
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -32,7 +34,9 @@ app.config["SESSION_COOKIE_SECURE"] = (
     os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
+# Keep request bodies near the per-file image cap so multipart buffering cannot
+# reserve tens of MB on the 512 MB Render instance.
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
@@ -988,7 +992,7 @@ def supabase_config():
     return supabase_url, api_key
 
 
-def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
+def supabase_http(url, method="GET", data=None, headers=None, timeout=15, attempts=3):
     request_headers = dict(headers or {})
     http_request = urllib.request.Request(
         url,
@@ -997,42 +1001,57 @@ def supabase_http(url, method="GET", data=None, headers=None, timeout=15):
         method=method,
     )
     ssl_context = ssl.create_default_context(cafile=certifi.where())
+    transient = (
+        urllib.error.URLError,
+        TimeoutError,
+        ConnectionResetError,
+        BrokenPipeError,
+        http.client.RemoteDisconnected,
+        http.client.IncompleteRead,
+    )
+    last_error = None
 
-    try:
-        with urllib.request.urlopen(
-            http_request, timeout=timeout, context=ssl_context
-        ) as response:
-            return response.read()
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        if exc.code == 404:
-            if "team_moments" in body:
-                raise RuntimeError("The Team Moments table is not set up yet.") from exc
-            if "players" in body:
-                raise RuntimeError("The players table is not set up yet.") from exc
-            if "seasons" in body:
-                raise RuntimeError("The seasons table is not set up yet.") from exc
-            if "team_members" in body:
-                raise RuntimeError("The team_members table is not set up yet.") from exc
-            if "player_played_games" in body:
-                raise RuntimeError("The player_played_games table is not set up yet.") from exc
-            if "game_results" in body:
-                raise RuntimeError("The game_results table is not set up yet.") from exc
-            if "tournament_matches" in body:
-                raise RuntimeError("The tournament_matches table is not set up yet.") from exc
-            raise RuntimeError("Supabase table or file was not found.") from exc
-        detail = ""
+    for attempt in range(max(1, attempts)):
         try:
-            parsed = json.loads(body) if body else {}
-            if isinstance(parsed, dict):
-                detail = (parsed.get("message") or parsed.get("error") or "").strip()
-        except json.JSONDecodeError:
-            detail = (body or "").strip()[:240]
-        if detail:
-            raise RuntimeError(f"Supabase request failed ({exc.code}): {detail}") from exc
-        raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError("Could not reach Supabase.") from exc
+            with urllib.request.urlopen(
+                http_request, timeout=timeout, context=ssl_context
+            ) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 404:
+                if "team_moments" in body:
+                    raise RuntimeError("The Team Moments table is not set up yet.") from exc
+                if "players" in body:
+                    raise RuntimeError("The players table is not set up yet.") from exc
+                if "seasons" in body:
+                    raise RuntimeError("The seasons table is not set up yet.") from exc
+                if "team_members" in body:
+                    raise RuntimeError("The team_members table is not set up yet.") from exc
+                if "player_played_games" in body:
+                    raise RuntimeError("The player_played_games table is not set up yet.") from exc
+                if "game_results" in body:
+                    raise RuntimeError("The game_results table is not set up yet.") from exc
+                if "tournament_matches" in body:
+                    raise RuntimeError("The tournament_matches table is not set up yet.") from exc
+                raise RuntimeError("Supabase table or file was not found.") from exc
+            detail = ""
+            try:
+                parsed = json.loads(body) if body else {}
+                if isinstance(parsed, dict):
+                    detail = (parsed.get("message") or parsed.get("error") or "").strip()
+            except json.JSONDecodeError:
+                detail = (body or "").strip()[:240]
+            if detail:
+                raise RuntimeError(f"Supabase request failed ({exc.code}): {detail}") from exc
+            raise RuntimeError(f"Supabase request failed ({exc.code}).") from exc
+        except transient as exc:
+            last_error = exc
+            if attempt + 1 >= max(1, attempts):
+                break
+            sleep(0.25 * (attempt + 1))
+
+    raise RuntimeError("Could not reach Supabase.") from last_error
 
 
 def supabase_request(path, method="GET", body=None, extra_headers=None):
@@ -1059,14 +1078,16 @@ def supabase_request(path, method="GET", body=None, extra_headers=None):
     return payload.decode("utf-8")
 
 
-def fetch_stats_rows(table, columns, order=None):
+def fetch_stats_rows(table, columns, order=None, filters=None):
     # player_id is optional until player_stats_add_player_id.sql has been run.
     try:
-        return fetch_supabase_rows(table, f"{columns},player_id", order=order)
+        return fetch_supabase_rows(
+            table, f"{columns},player_id", order=order, filters=filters
+        )
     except RuntimeError as exc:
         message = str(exc).lower()
         if "player_id" in message and "column" in message:
-            return fetch_supabase_rows(table, columns, order=order)
+            return fetch_supabase_rows(table, columns, order=order, filters=filters)
         raise
 
 
@@ -1885,20 +1906,27 @@ def load_player_directory():
     return by_id, by_name
 
 
-def load_played_ids_by_name_season():
+def load_played_ids_by_name_season(name=None):
     # Lineups identify which person played when two players share a display name.
+    filters = None
+    if name:
+        filters = {"name": f"eq.{postgrest_quoted(name)}"}
     try:
-        rows = fetch_supabase_rows("player_played_games", "name,season,player_id")
+        rows = fetch_supabase_rows(
+            "player_played_games",
+            "name,season,player_id",
+            filters=filters,
+        )
     except RuntimeError:
         return {}
     grouped = {}
     for row in rows:
         player_id = str(row.get("player_id") or "").strip()
-        name = (row.get("name") or "").strip()
+        row_name = (row.get("name") or "").strip()
         season = (row.get("season") or "").strip()
-        if not player_id or not name or not season:
+        if not player_id or not row_name or not season:
             continue
-        grouped.setdefault((name, season), set()).add(player_id)
+        grouped.setdefault((row_name, season), set()).add(player_id)
     return grouped
 
 
@@ -2210,13 +2238,8 @@ def season_play_buckets(
 
 
 def load_member_stats():
-    # The totals table is derived, so ask Supabase to rebuild it before reading.
-    # A stale read is better than a failed page, so refresh errors are ignored.
-    try:
-        call_supabase_rpc("refresh_player_totals")
-    except RuntimeError:
-        pass
-
+    # Totals are refreshed from admin game/season saves (refresh_all_stats).
+    # Rebuilding on every public page view spikes CPU/RAM on small instances.
     rows = fetch_stats_rows(
         "player_stats_total",
         MEMBER_STATS_COLUMNS,
@@ -3090,6 +3113,47 @@ def empty_career():
     }
 
 
+def career_from_totals_row(row):
+    if not row:
+        return None
+    return {
+        "total_games": stat_count(row.get("total_games")),
+        "total_wins": stat_count(row.get("total_wins")),
+        "win_rate": format_win_rate(row.get("total_win_rates")),
+        "total_seasons": stat_count(row.get("total_seasons")),
+        "season_titles": stat_count(row.get("season_titles")),
+        "season_runnerups": stat_count(row.get("season_runnerups")),
+        "tournament_titles": stat_count(row.get("tournament_titles")),
+        "tournament_runnerups": stat_count(row.get("tournament_runnerups")),
+    }
+
+
+def career_from_history(history):
+    games = sum(stat_count(row.get("season_games")) for row in history)
+    wins = sum(stat_count(row.get("season_wins")) for row in history)
+    seasons = {
+        row.get("season")
+        for row in history
+        if row.get("season") and stat_count(row.get("season_games"))
+    }
+    def marked_seasons(label):
+        return {
+            row.get("season")
+            for row in history
+            if row.get("season") and label in (row.get("marks") or [])
+        }
+    return {
+        "total_games": games,
+        "total_wins": wins,
+        "win_rate": counted_win_rate(wins, games),
+        "total_seasons": len(seasons),
+        "season_titles": len(marked_seasons("Season title")),
+        "season_runnerups": len(marked_seasons("Season runner-up")),
+        "tournament_titles": len(marked_seasons("Tournament title")),
+        "tournament_runnerups": len(marked_seasons("Tournament runner-up")),
+    }
+
+
 def load_public_player(player_id):
     rows = fetch_supabase_rows(
         "players",
@@ -3107,21 +3171,143 @@ def load_public_player(player_id):
     }
 
 
+def fetch_player_season_stat_rows(player_id, name):
+    # Prefer player_id rows when the column is backfilled; fall back to name.
+    rows = []
+    try:
+        rows = fetch_stats_rows(
+            "player_stats_by_season",
+            PLAYER_SEASON_COLUMNS,
+            filters={"player_id": f"eq.{player_id}"},
+        )
+    except RuntimeError:
+        rows = []
+    if rows:
+        return rows, True
+    if not name:
+        return [], False
+    return (
+        fetch_stats_rows(
+            "player_stats_by_season",
+            PLAYER_SEASON_COLUMNS,
+            filters={"player": f"eq.{postgrest_quoted(name)}"},
+        ),
+        False,
+    )
+
+
+def fetch_player_totals_row(player_id, name, shared_name):
+    try:
+        rows = fetch_stats_rows(
+            "player_stats_total",
+            MEMBER_STATS_COLUMNS,
+            filters={"player_id": f"eq.{player_id}"},
+        )
+        if rows:
+            return rows[0]
+    except RuntimeError:
+        pass
+    # Name-grouped totals are only safe when this display name is unique.
+    if shared_name or not name:
+        return None
+    try:
+        rows = fetch_stats_rows(
+            "player_stats_total",
+            MEMBER_STATS_COLUMNS,
+            filters={"player": f"eq.{postgrest_quoted(name)}"},
+        )
+    except RuntimeError:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    return None
+
+
 def load_player_profile(player_id):
+    # Keep this page cheap: one player, not a full-league stats rebuild.
     player = load_public_player(player_id)
     if player is None:
         return None
-    totals, _current_season = load_member_stats()
-    _, season_rows = load_player_season_stats()
+
+    name = player["display_name"]
+    by_id, by_name = load_player_directory()
+    same_name = by_name.get(name) or []
+    shared_name = len(same_name) > 1
+    season_rows, by_player_id = fetch_player_season_stat_rows(player["id"], name)
+
+    history_entries = []
+    if by_player_id:
+        for row in season_rows:
+            history_entries.append(
+                season_stat_entry(
+                    row,
+                    player["id"],
+                    by_id,
+                    stat_count(row.get("season_games")),
+                    stat_count(row.get("season_wins")),
+                    format_win_rate(row.get("season_win_rates")),
+                )
+            )
+    else:
+        played_index = load_played_ids_by_name_season(name) if shared_name else {}
+        lineup_splits = (
+            shared_name_lineup_splits(season_rows, by_name) if shared_name else {}
+        )
+        roster_by_player_season = {}
+        if shared_name:
+            roster_by_player_season = load_roster_team_by_player_season(
+                (row.get("season") or "").strip()
+                for row in season_rows
+                if (row.get("season") or "").strip()
+            )
+        for row in season_rows:
+            split = blended_name_split(
+                row,
+                by_name,
+                played_index,
+                lineup_splits,
+                roster_by_player_season=roster_by_player_season,
+            )
+            if split:
+                stats = split.get(player["id"])
+                if not stats:
+                    continue
+                history_entries.append(
+                    season_stat_entry(
+                        row,
+                        player["id"],
+                        by_id,
+                        stats["games"],
+                        stats["wins"],
+                        counted_win_rate(stats["wins"], stats["games"]),
+                    )
+                )
+                continue
+            attributed = attribute_stat_player_id(
+                row,
+                by_name,
+                played_index,
+                lineup_splits=lineup_splits,
+                roster_by_player_season=roster_by_player_season,
+            )
+            if attributed and attributed != player["id"]:
+                continue
+            if shared_name and attributed != player["id"]:
+                continue
+            history_entries.append(
+                season_stat_entry(
+                    row,
+                    player["id"],
+                    by_id,
+                    stat_count(row.get("season_games")),
+                    stat_count(row.get("season_wins")),
+                    format_win_rate(row.get("season_win_rates")),
+                )
+            )
+
     records = {row["season"]: row for row in load_season_records()}
-    career = next(
-        (row for row in totals if row.get("player_id") == player["id"]),
-        None,
-    )
     history = []
-    for row in season_rows:
-        if row.get("player_id") != player["id"]:
-            continue
+    for row in history_entries:
         record = records.get(row["season"])
         history.append({
             **row,
@@ -3131,6 +3317,9 @@ def load_player_profile(player_id):
     history.sort(
         key=lambda row: (*season_sort_key(row), (row.get("season_team") or "").lower())
     )
+
+    totals_row = fetch_player_totals_row(player["id"], name, shared_name)
+    career = career_from_totals_row(totals_row) or career_from_history(history)
     awards = player_awards(history, player["display_name"], records)
     return player, career or empty_career(), history, awards
 
