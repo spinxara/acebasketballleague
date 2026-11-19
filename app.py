@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 from io import BytesIO
 from threading import Lock
-from time import sleep
+from time import monotonic, sleep
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -45,6 +45,9 @@ LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW = timedelta(minutes=10)
 _login_attempts = {}
 _login_lock = Lock()
+_stats_last_updated_cache = {"value": "", "expires_at": 0.0}
+_stats_last_updated_lock = Lock()
+STATS_LAST_UPDATED_CACHE_SECONDS = 60
 
 RULES_URL = (
     "https://docs.google.com/document/d/"
@@ -297,7 +300,7 @@ def inject_globals():
         "highlight_video_title": HIGHLIGHT_VIDEO_TITLE,
         "instagram_url": INSTAGRAM_URL,
         "sponsors": sorted(SPONSORS, key=lambda sponsor: not sponsor.get("featured")),
-        "last_updated": "September 14, 2026",
+        "last_updated": load_stats_last_updated(),
         "current_year": datetime.now().year,
         "maintainer_name": MAINTAINER_NAME,
         "maintainer_kakao": MAINTAINER_KAKAO,
@@ -2492,17 +2495,69 @@ def load_team_matchups():
     return season_list, matchups
 
 
-def format_moment_date(value):
+def parse_timestamp(value):
     if not value:
-        return ""
+        return None
     text = str(value).replace("Z", "+00:00")
     try:
         stamp = datetime.fromisoformat(text)
     except ValueError:
-        return str(value)
-    if stamp.tzinfo is not None:
-        stamp = stamp.astimezone().replace(tzinfo=None)
-    return stamp.strftime("%B %d, %Y").replace(" 0", " ")
+        return None
+    if stamp.tzinfo is None:
+        return stamp.replace(tzinfo=timezone.utc)
+    return stamp
+
+
+def format_display_date(value, tz=SESSION_TIMEZONE):
+    stamp = parse_timestamp(value)
+    if stamp is None:
+        return str(value) if value else ""
+    local = stamp.astimezone(tz).replace(tzinfo=None)
+    return local.strftime("%B %d, %Y").replace(" 0", " ")
+
+
+def format_moment_date(value):
+    return format_display_date(value)
+
+
+def latest_table_timestamp(table, column):
+    try:
+        rows = fetch_supabase_rows(
+            table,
+            column,
+            order=f"{column}.desc",
+            filters={"limit": "1"},
+        )
+    except RuntimeError:
+        return None
+    if not rows:
+        return None
+    return parse_timestamp(rows[0].get(column))
+
+
+def load_stats_last_updated():
+    now = monotonic()
+    with _stats_last_updated_lock:
+        cached = _stats_last_updated_cache["value"]
+        if cached and now < _stats_last_updated_cache["expires_at"]:
+            return cached
+
+    latest = None
+    for table, column in (
+        ("game_results", "created_at"),
+        ("player_played_games", "created_at"),
+        ("seasons", "updated_at"),
+        ("team_members", "created_at"),
+    ):
+        stamp = latest_table_timestamp(table, column)
+        if stamp is not None and (latest is None or stamp > latest):
+            latest = stamp
+
+    label = format_display_date(latest) if latest else ""
+    with _stats_last_updated_lock:
+        _stats_last_updated_cache["value"] = label
+        _stats_last_updated_cache["expires_at"] = now + STATS_LAST_UPDATED_CACHE_SECONDS
+    return label
 
 
 def prepare_moment_image(file_storage):
